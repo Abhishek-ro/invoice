@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import './theme.css';
-import InvoiceReconApp from '../invoice-reconciliation/routes/index.jsx';
+import InvoiceReconApp from './features/invoice-reconciliation/routes/index.jsx';
 import ThemeToggle from './ThemeToggle.jsx';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
