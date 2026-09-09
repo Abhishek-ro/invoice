@@ -3,7 +3,7 @@
 //
 // Every request the frontend makes goes through request() below, which
 // reads its target from VITE_API_BASE_URL (set in .env at the project
-// root). Right now that points at the mock-server/ folder next to this
+// root). Right now that points at the invoice-backend/ folder next to this
 // project. When the real Node backend exists, change that one env var —
 // nothing in any page or component needs to change, because every call
 // site already goes through this file and the api/*.js functions that
@@ -11,7 +11,7 @@
 //
 // Shapes, error codes and status codes here all match
 // 04-API-CONTRACT.md §0 exactly, because that's the contract both this
-// mock server and (eventually) the real backend implement.
+// this backend and (eventually) the real backend implement.
 // ---------------------------------------------------------------------
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000') + '/api/v1';

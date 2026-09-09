@@ -1,5 +1,5 @@
 {
-  "name": "invoice-reconciliation-mock-server",
+  "name": "invoice-backend",
   "private": true,
   "version": "0.1.0",
   "type": "module",

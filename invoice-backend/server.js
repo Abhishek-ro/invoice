@@ -39,11 +39,11 @@ app.use((err, req, res, _next) => {
     return res.status(err.status).json(err.toBody());
   }
   // eslint-disable-next-line no-console
-  console.error('[mock-server] unhandled error:', err);
+  console.error('[invoice-backend] unhandled error:', err);
   res.status(500).json({ error: { code: 'internal_error', message: 'Internal error.' } });
 });
 
 app.listen(PORT, () => {
   // eslint-disable-next-line no-console
-  console.log(`[mock-server] listening on http://localhost:${PORT} — API base: http://localhost:${PORT}/api/v1`);
+  console.log(`[invoice-backend] listening on http://localhost:${PORT} — API base: http://localhost:${PORT}/api/v1`);
 });

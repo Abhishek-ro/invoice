@@ -98,12 +98,12 @@ export default function MatchingRulesSettings() {
         )}
 
         {/* Warning Banner — updated copy: this now really is a network
-            round trip to the mock server's in-memory store (04 §B.2.2), so
+            round trip to the backend's in-memory store (04 §B.2.2), so
             "local state only" would be inaccurate. It's still not a real
-            database — a mock-server restart resets it to its seed values. */}
+            database — a backend restart resets it to its seed values. */}
         <div style={{ padding: '12px 16px', background: 'var(--tint-escalated-bg)', border: '1px solid var(--tint-warning-border)', borderRadius: '6px', color: 'var(--tint-escalated-text)', fontSize: '13px', fontWeight: 600, marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-          Settings persist to the mock backend's in-memory store — restarting the mock server resets them to defaults.
+          Settings persist to the backend's in-memory store — restarting it resets them to defaults.
         </div>
 
         {/* Tolerance Rules */}

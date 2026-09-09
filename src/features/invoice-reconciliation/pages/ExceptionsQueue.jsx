@@ -13,10 +13,10 @@ import DataGridViewer from '../components/shared/DataGridViewer';
 // "SLA Breach" — don't correspond to any stage_key the matching engine
 // (05-MATCHING-RULES.md) produces, so they've been dropped. Filter chips
 // below are the real reason_stage_key values instead. Note the mock's
-// *live* matcher (mock-server/lib/matcher.js, used by POST
+// *live* matcher (invoice-backend/lib/matcher.js, used by POST
 // /reconciliations) only ever pushes po_match/grn_match mismatches —
 // price_validation only shows up as a reason on hand-authored seed rows
-// (mock-server/lib/db.js) that pre-date the matcher. All four chips are
+// (invoice-backend/lib/db.js) that pre-date the matcher. All four chips are
 // real, queryable values either way.
 const STAGE_LABELS = { po_match: 'PO Match', grn_match: 'GRN Match', price_validation: 'Price Validation', duplicate_scan: 'Duplicate Suspected' };
 const REASON_FILTERS = ['All', 'po_match', 'grn_match', 'price_validation', 'duplicate_scan'];

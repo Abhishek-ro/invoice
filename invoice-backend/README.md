@@ -1,4 +1,4 @@
-# Mock backend — recon-app-v2
+# Invoice backend — recon-app-v2
 
 This is a real, standalone HTTP server implementing exactly the endpoints in
 `04-API-CONTRACT.md` Part B. It's not a mock *data file* — it's Express +
@@ -19,7 +19,7 @@ new language, no schema/ORM, just routes and a couple of `Map`s.
 ## Running it
 
 ```
-cd mock-server
+cd invoice-backend
 npm install
 npm start        # or: npm run dev   (restarts on file changes)
 ```
@@ -72,7 +72,7 @@ hardcoded `fetch()`.
 - No auth — `X-Actor-Id`/`X-Actor-Name` are hardcoded client-side stand-ins
   per 04 §0's own note that this is expected pre-auth.
 - No bulk decisions, no saved views, no bulk approve/escalate — none of
-  these exist anywhere in 04, so neither the mock server nor the frontend
+  these exist anywhere in 04, so neither the backend nor the frontend
   invented them.
 - Vendor Intelligence, Vendor Profile, Analytics & Reports, Duplicate
   Detection, and ERP Config screens are **not wired to this server at

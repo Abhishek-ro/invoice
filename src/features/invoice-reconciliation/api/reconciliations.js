@@ -14,7 +14,7 @@ export function createReconciliation({ document_ids, tax_rate, actual_sla }) {
 
 /**
  * §B.3.1. §B.3.2's "processing" escape hatch: if this ever comes back
- * with `status: "processing"` (never happens against this mock server —
+ * with `status: "processing"` (never happens against this backend —
  * it's always synchronous — but will once matching moves to a background
  * job), the caller is expected to poll this same endpoint every 1s until
  * it isn't. See 04 §B.3.2 for the ~20-line reference loop; not wired up

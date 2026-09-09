@@ -30,7 +30,7 @@ invoice/
 │
 ├── src/                                3 files. Entry point + theme only.
 ├── invoice-reconciliation/             THE ENTIRE FRONTEND APP. Not under src/.
-└── mock-server/                        Node stand-in backend. No node_modules yet.
+└── invoice-backend/                        Node stand-in backend. No node_modules yet.
 ```
 
 ## 1.1 The thing that's off
@@ -153,7 +153,7 @@ page (e.g. ReconciliationDetail.jsx)
     → api/reconciliations.js                        ← per-resource wrapper
       → apiClient.js  request()                     ← the only fetch() in the app
         → VITE_API_BASE_URL + '/api/v1' + path      ← .env, one-line swap point
-          → mock-server (now) / real Node backend (later)
+          → invoice-backend (now) / real Node backend (later)
 ```
 
 `apiClient.js` is the only file in the frontend that calls `fetch`. Nothing
@@ -190,7 +190,7 @@ in `01-SCOPE.md`, not on disk.
 
 ---
 
-# 3. BACKEND — `mock-server/`
+# 3. BACKEND — `invoice-backend/`
 
 A stand-in Node backend that implements exactly `04-API-CONTRACT.md` Part B.
 In-memory only; every restart resets to seed. It is not the real backend and
@@ -198,7 +198,7 @@ is not meant to become it — it exists so the frontend can be built and demoed
 network-real before the Python/Node work lands.
 
 ```
-mock-server/
+invoice-backend/
 ├── package.json     617 B   express ^4.19.2, cors ^2.8.5, multer ^2.3.0
 ├── README.md      4,389 B   how to run it, what it fakes
 ├── server.js      1,795 B   app wiring — cors, json, actor guard, 5 routers, 404, error handler
@@ -279,7 +279,7 @@ parallel data systems are live at the same time, and which one a page uses is
 not visible from its filename or its folder.
 
 ```
-                      ┌─ api/ ──→ apiClient ──→ mock-server  (6 pages)
+                      ┌─ api/ ──→ apiClient ──→ invoice-backend  (6 pages)
    pages/ ────────────┤
                       └─ data/mock*.js  (hardcoded, in-bundle)  (4 pages)
                          + ErpConfig, which uses neither         (1 page)
@@ -322,15 +322,15 @@ that got wired to the API on 09-09; nobody went back and deleted the fixtures
 they replaced. `mockAnalyticsData.js` and `mockVendorData.js` are fully live —
 don't touch those.
 
-## 5.2 `mock-server/` has never been installed
+## 5.2 `invoice-backend/` has never been installed
 
-There is no `mock-server/node_modules/`. `express`, `cors` and `multer` are
+There is no `invoice-backend/node_modules/`. `express`, `cors` and `multer` are
 declared in its `package.json` and were never installed, which means the
 backend has not been run since it was written. The frontend's six "live" pages
 have therefore been wired against a server that hasn't started.
 
 ```
-cd mock-server && npm install && npm run dev     # → http://localhost:4000
+cd invoice-backend && npm install && npm run dev     # → http://localhost:4000
 ```
 
 Do this before trusting any of §2.2's "live" column.
@@ -339,7 +339,7 @@ Do this before trusting any of §2.2's "live" column.
 
 `04-API-CONTRACT.md` §B.1.4 puts `GET /settings/tolerances` on the Upload
 screen — the idea being that Upload shows the tolerances a run will use.
-`mock-server/routes/settings.js` serves it. `api/settings.js` wraps it.
+`invoice-backend/routes/settings.js` serves it. `api/settings.js` wraps it.
 `NewReconciliation.jsx` never imports it; it sends `tax_rate` and `actual_sla`
 from local state instead (lines 201–202, with a `TODO(04 §B.1.3)` at line 498).
 
@@ -390,7 +390,7 @@ invoice/
 ├── vite.config.js          ← add resolve.alias '@' → /src
 ├── package.json
 ├── docs/                   ← 01..07 move here, off the root
-├── mock-server/            ← stays put, it's a separate service
+├── invoice-backend/            ← stays put, it's a separate service
 └── src/
     ├── main.jsx
     ├── ThemeToggle.jsx
@@ -475,7 +475,7 @@ as its own task.
 | Pages on hardcoded mock | 4 |
 | Pages on nothing | 1 (ErpConfig) |
 | Backend endpoints | 12, all with a caller |
-| Backend installed? | No — `mock-server/node_modules` missing |
+| Backend installed? | No — `invoice-backend/node_modules` missing |
 | Under version control? | No |
 | npm audit | 5 vulns, 2 high, 1 unfixable (`xlsx`) |
 | Biggest file | `NewReconciliation.jsx`, 40,360 B |
