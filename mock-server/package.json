@@ -1,0 +1,16 @@
+{
+  "name": "invoice-reconciliation-mock-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Stand-in Node backend for local frontend dev. Implements exactly the endpoints in 04-API-CONTRACT.md Part B, with a simplified in-memory datastore and a MOCK matching engine (see lib/matcher.js). Swap VITE_API_BASE_URL to point the frontend at a real backend later — no frontend code changes needed.",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "multer": "^2.3.0"
+  }
+}
