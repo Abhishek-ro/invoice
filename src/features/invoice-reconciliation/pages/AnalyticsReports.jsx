@@ -25,7 +25,6 @@ export default function AnalyticsReports() {
         <header className="topbar" style={{ position: 'sticky', top: 0, zIndex: 50 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <h1 className="topbar__title" style={{ fontSize: '20px' }}>Analytics & Control Tower</h1>
-            <div style={{ background: 'var(--primary-50)', color: '#4338ca', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>Demo Data</div>
           </div>
           <div className="topbar__right" style={{ gap: '1rem' }}>
             <button className="ir-link-btn" style={{ padding: '8px 16px', background: 'var(--primary-white)', border: '1px solid var(--gray-300)', borderRadius: '6px', fontWeight: 600 }}>

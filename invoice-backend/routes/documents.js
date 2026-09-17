@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { documents, genId, nowISO } from '../lib/db.js';
+import { documents, documentHashes, genId, nowISO } from '../lib/db.js';
 import { fakeExtract } from '../lib/extractor.js';
 import { Errors, asyncRoute } from '../lib/errors.js';
 
@@ -28,6 +28,33 @@ function extOf(filename) {
 }
 
 const router = Router();
+
+// Minimal, self-contained duplicate-invoice check, added alongside the
+// §B.1.1/§B.1.2 contract endpoints (not part of that doc — this is new).
+// Frontend computes a SHA-256 hex digest of the raw invoice file bytes
+// (Web Crypto, client-side) and posts it here BEFORE calling POST
+// /documents, so a duplicate never even reaches extraction. Storage is
+// just another Map in lib/db.js (documentHashes), matching the
+// in-memory-store pattern the rest of this mock backend already uses.
+//
+// POST /api/v1/documents/check-hash
+//   body: { hash: string, filename?: string }
+//   200: { duplicate: false }
+//   200: { duplicate: true, match: { document_id, original_filename, processed_at } }
+router.post(
+  '/documents/check-hash',
+  asyncRoute(async (req, res) => {
+    const { hash } = req.body ?? {};
+    if (!hash || typeof hash !== 'string' || !/^[a-f0-9]{64}$/i.test(hash)) {
+      throw Errors.malformedRequest('hash is required and must be a sha256 hex digest.', { received: hash });
+    }
+    const existing = documentHashes.get(hash.toLowerCase());
+    if (!existing) {
+      return res.status(200).json({ duplicate: false });
+    }
+    res.status(200).json({ duplicate: true, match: existing });
+  })
+);
 
 // §B.1.1 POST /documents
 router.post(
@@ -71,7 +98,7 @@ router.post(
         extraction_error: null,
         extracted_at: null,
         confirmed_at: null,
-        fields: { vendor_name: null, doc_number: null, doc_date: null, po_ref: null, subtotal: null, tax_amount: null, total: null, currency: null },
+        fields: { vendor_name: null, doc_number: null, doc_date: null, po_ref: null, buyer_name: null, subtotal: null, tax_amount: null, total: null, currency: null },
         line_items: [],
         warnings: [],
         created_at: createdAt,
@@ -107,6 +134,19 @@ router.post(
       created_at: createdAt,
     };
     documents.set(id, doc);
+
+    // Record the hash (if the client sent one) so a later identical
+    // upload is caught by POST /documents/check-hash. Only invoices
+    // participate in duplicate detection.
+    const fileHash = req.body?.file_hash;
+    if (documentType === 'invoice' && fileHash && typeof fileHash === 'string' && /^[a-f0-9]{64}$/i.test(fileHash)) {
+      documentHashes.set(fileHash.toLowerCase(), {
+        document_id: id,
+        original_filename: req.file.originalname,
+        processed_at: createdAt,
+      });
+    }
+
     res.status(201).json(doc);
   })
 );

@@ -8,6 +8,13 @@ import { randomUUID } from 'node:crypto';
 export const documents = new Map(); // id -> document
 export const reconciliations = new Map(); // id -> reconciliation
 
+// hash (sha256 hex, client-computed over raw file bytes) -> record of the
+// document it was first seen on. Scoped to invoice uploads only (that's
+// the duplicate-invoice-detection feature) — see routes/documents.js
+// POST /documents/check-hash and the hash recorded at the bottom of
+// POST /documents when document_type === 'invoice'.
+export const documentHashes = new Map(); // hash -> { document_id, original_filename, processed_at }
+
 export const genId = () => randomUUID();
 export const nowISO = () => new Date().toISOString();
 

@@ -95,6 +95,11 @@ export default function ReconciliationDetail() {
   const invoiceDoc = d.documents.find((doc) => doc.document_type === 'invoice');
   const otherDoc = d.documents.find((doc) => doc.document_type === 'po') || d.documents.find((doc) => doc.document_type === 'grn');
 
+  // Mirrors invoice-backend/routes/reconciliations.js §C TRANSITIONS table:
+  // touchless_approved and rejected have no allowed actions. Buttons used to
+  // stay clickable here and only fail after the round trip to the backend.
+  const isTerminal = d.status === 'touchless_approved' || d.status === 'rejected';
+
   const mismatchCols = [
     { key: 'stage_key', label: 'STAGE', render: (val) => <span style={{ background: 'var(--primary-50)', color: 'var(--primary-blue)', border: '1px solid var(--primary-200)', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700 }}>{STAGE_LABELS[val] || val}</span> },
     { key: 'field', label: 'FIELD', render: (val) => <span style={{ fontFamily: 'monospace', fontSize: '13px', fontWeight: 600 }}>{val}</span> },
@@ -129,10 +134,18 @@ export default function ReconciliationDetail() {
             <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--gray-700)' }}>{d.vendor_name}</span>
             <span style={{ fontSize: '12px', color: 'var(--gray-400)' }}>{new Date(d.created_at).toLocaleDateString()}</span>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button className="ir-action-btn ir-action-escalate" disabled={deciding} onClick={() => handleDecision('escalate')}>Escalate</button>
-            <button className="ir-action-btn ir-action-reject" disabled={deciding} onClick={() => handleDecision('reject')}>Reject</button>
-            <button className="ir-action-btn ir-action-approve" disabled={deciding} onClick={() => handleDecision('approve')}>Approve Override</button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {isTerminal ? (
+              <span style={{ fontSize: '13px', color: 'var(--gray-500)', fontWeight: 600 }}>
+                No action needed — already {d.status === 'touchless_approved' ? 'approved' : 'rejected'}.
+              </span>
+            ) : (
+              <>
+                <button className="ir-action-btn ir-action-escalate" disabled={deciding} onClick={() => handleDecision('escalate')}>Escalate</button>
+                <button className="ir-action-btn ir-action-reject" disabled={deciding} onClick={() => handleDecision('reject')}>Reject</button>
+                <button className="ir-action-btn ir-action-approve" disabled={deciding} onClick={() => handleDecision('approve')}>Approve Override</button>
+              </>
+            )}
           </div>
         </div>
 

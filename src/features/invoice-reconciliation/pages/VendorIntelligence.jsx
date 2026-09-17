@@ -4,9 +4,14 @@ import { motion } from 'framer-motion';
 import { ComposedChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { MOCK_VENDOR_DIRECTORY } from '../data/mockVendorData';
 import DataGridViewer from '../components/shared/DataGridViewer';
+import { useVendors } from '../context/VendorContext';
 
 export default function VendorIntelligence() {
   const navigate = useNavigate();
+  const { vendors } = useVendors();
+  // Summary strip + charts stay on the static snapshot (they're period
+  // aggregates, not derived from the live grid); only the directory table
+  // below reflects vendors added this session.
   const d = MOCK_VENDOR_DIRECTORY;
   const [activeFilter, setActiveFilter] = useState('All');
 
@@ -18,7 +23,7 @@ export default function VendorIntelligence() {
     { key: 'name', label: 'Vendor Name', sortable: true },
     { key: 'category', label: 'Category', sortable: true },
     { key: 'totalSpend', label: 'Total Spend ($)', sortable: true, render: (val) => `$${val.toLocaleString()}` },
-    { key: 'mismatchRate', label: 'Mismatch Rate', sortable: true },
+    { key: 'mismatchRate', label: 'Mismatch Rate', sortable: true, render: (val) => `${val}%` },
     { key: 'avgCycleTime', label: 'Avg Cycle (d)', sortable: true },
     { key: 'contractCompliancePct', label: 'Compliance (%)', sortable: true, render: (val) => `${val}%` },
     { key: 'openDisputes', label: 'Disputes', sortable: true },
@@ -53,10 +58,16 @@ export default function VendorIntelligence() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: 'var(--gray-50)' }}>
       
-      <header className="topbar" style={{ position: 'sticky', top: 0, zIndex: 50 }}>
+      <header className="topbar" style={{ position: 'sticky', top: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <h1 className="topbar__title" style={{ fontSize: '20px' }}>Vendor Intelligence Directory</h1>
         </div>
+        <button
+          onClick={() => navigate('/invoice-reconciliation/vendors/new')}
+          className="ir-action-btn ir-action-approve"
+        >
+          + New Vendor
+        </button>
       </header>
 
       <div style={{ padding: '2rem', maxWidth: '1600px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -153,10 +164,10 @@ export default function VendorIntelligence() {
 
           <div style={{ border: '1px solid var(--gray-200)', borderRadius: '8px', overflow: 'hidden' }}>
             {/* Using DataGridViewer to render the vendorGrid array */}
-            <DataGridViewer 
-              rows={d.vendorGrid} 
-              columns={columns} 
-              exportFilename="Vendor_Directory_Export" 
+            <DataGridViewer
+              rows={vendors}
+              columns={columns}
+              exportFilename="Vendor_Directory_Export"
             />
           </div>
         </div>

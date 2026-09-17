@@ -1,3 +1,6 @@
 node_modules
 dist
 .env
+Claude outputs/
+_test-uploads/
+vite.config.js.timestamp-*

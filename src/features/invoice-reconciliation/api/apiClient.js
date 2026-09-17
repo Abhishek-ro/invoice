@@ -14,12 +14,15 @@
 // this backend and (eventually) the real backend implement.
 // ---------------------------------------------------------------------
 
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000') + '/api/v1';
+const BASE_URL = `${(import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/$/, '')}/api/v1`;
+export const RECON_API_BASE_URL = (
+  import.meta.env.VITE_RECON_API_BASE_URL || 'http://localhost:8000'
+).replace(/\/$/, '');
 
 // §0: "In v1 the frontend hardcodes these; when auth lands they come
 // from the session and the headers are dropped." One place to change
 // when that day comes.
-const ACTOR = { id: 'u_dev_stub', name: 'P. Sharma' };
+export const ACTOR = { id: 'u_dev_stub', name: 'P. Sharma' };
 
 export class ApiError extends Error {
   constructor(status, code, message, details) {
@@ -34,10 +37,21 @@ async function parseErrorBody(res) {
   try {
     const body = await res.json();
     if (body?.error?.code) return body.error;
-  } catch {
-    /* fall through to generic error below */
-  }
-  return { code: 'internal_error', message: `Request failed with status ${res.status}` };
+    if (body?.detail !== undefined) {
+      return {
+        code: 'backend_error',
+        message:
+          typeof body.detail === 'string'
+            ? body.detail
+            : JSON.stringify(body.detail),
+        details: body.detail,
+      };
+    }
+  } catch {}
+  return {
+    code: 'internal_error',
+    message: `Request failed with status ${res.status}`,
+  };
 }
 
 /**
@@ -50,9 +64,9 @@ async function parseErrorBody(res) {
  * @param {boolean} [options.mutating] - defaults to true for non-GET methods; set false to skip actor headers on a non-GET call that doesn't need them (none currently)
  */
 export async function request(path, options = {}) {
-  const { method = 'GET', json, formData, query } = options;
+  const { method = 'GET', json, formData, query, baseUrl = BASE_URL } = options;
 
-  let url = `${BASE_URL}${path}`;
+  let url = `${baseUrl}${path}`;
   if (query && Object.keys(query).length) {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) {
@@ -65,7 +79,7 @@ export async function request(path, options = {}) {
   }
 
   const headers = {};
-  if (method !== 'GET') {
+  if (method !== 'GET' && baseUrl !== RECON_API_BASE_URL) {
     headers['X-Actor-Id'] = ACTOR.id;
     headers['X-Actor-Name'] = ACTOR.name;
   }

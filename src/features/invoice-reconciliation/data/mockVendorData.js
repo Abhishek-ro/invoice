@@ -20,24 +20,86 @@ export const MOCK_VENDOR_DIRECTORY = {
     { month: "Aug", count: 3 }, { month: "Sep", count: 5 }, { month: "Oct", count: 2 },
     { month: "Nov", count: 4 }, { month: "Dec", count: 1 }, { month: "Jan", count: 6 }
   ],
+  // vendorGrid carries both the analytics columns the directory table renders
+  // (totalSpend, mismatchRate, riskTier, ...) AND the full "master record"
+  // fields a Zoho-style New Vendor form collects (pan, gstin, bankDetails,
+  // contactPersons, ...). No vendors table exists yet (03 Decisions #6) —
+  // this is demo data shaped like the real thing will eventually look.
   vendorGrid: [
     {
-      vendorId: "VEND-0042", name: "Global Supplies Ltd", category: "Raw Materials",
-      totalSpend: 284900, invoiceCount: 84, mismatchRate: "18%", avgCycleTime: 4.8,
+      vendorId: "VEND-0042", name: "Global Supplies Ltd", companyName: "Global Supplies Ltd",
+      displayName: "Global Supplies Ltd", category: "Raw Materials",
+      totalSpend: 284900, invoiceCount: 84, mismatchRate: 18, avgCycleTime: 4.8,
       onTimeDeliveryPct: 91.2, contractCompliancePct: 90.0, riskTier: "Medium",
-      openDisputes: 3, lastInvoiceDate: "2026-07-04", trend: "up"
+      openDisputes: 3, lastInvoiceDate: "2026-07-04", trend: "up",
+      email: "accounts@globalsupplies.example", phone: "+91 98200 11234", language: "English",
+      pan: "AACCG1234H", gstin: "27AACCG1234H1Z5", msmeRegistered: true,
+      currency: "INR", paymentTerms: "Net 30", tds: "194C - Contractors", portalEnabled: true,
+      openingBalance: 0,
+      billingAddress: { attention: "Rakesh Mehta", addressLine1: "Plot 14, MIDC Industrial Area", addressLine2: "Andheri East", city: "Mumbai", state: "Maharashtra", pinCode: "400093", country: "India", phone: "+91 22 4021 5566" },
+      contactPersons: [{ salutation: "Mr.", firstName: "Rakesh", lastName: "Mehta", email: "rakesh.mehta@globalsupplies.example", workPhone: "+91 22 4021 5566", mobile: "+91 98200 11234" }],
+      bankDetails: { beneficiaryName: "Global Supplies Ltd", bankName: "HDFC Bank", accountNumber: "50100234567890", ifsc: "HDFC0001234", branch: "Andheri East" },
+      customFields: [], reportingTags: ["Strategic"], remarks: ""
     },
     {
-      vendorId: "VEND-0044", name: "NorthPeak Logistics", category: "Logistics & Freight",
-      totalSpend: 96450, invoiceCount: 63, mismatchRate: "26%", avgCycleTime: 6.2,
+      vendorId: "VEND-0044", name: "NorthPeak Logistics", companyName: "NorthPeak Logistics",
+      displayName: "NorthPeak Logistics", category: "Logistics & Freight",
+      totalSpend: 96450, invoiceCount: 63, mismatchRate: 26, avgCycleTime: 6.2,
       onTimeDeliveryPct: 78.4, contractCompliancePct: 81.0, riskTier: "High",
-      openDisputes: 4, lastInvoiceDate: "2026-07-05", trend: "up"
+      openDisputes: 4, lastInvoiceDate: "2026-07-05", trend: "up",
+      email: "accounts@northpeaklogistics.example", phone: "+91 98110 44556", language: "English",
+      pan: "AAECN5678L", gstin: "07AAECN5678L1ZQ", msmeRegistered: false,
+      currency: "INR", paymentTerms: "Net 45", tds: "194C - Contractors", portalEnabled: false,
+      openingBalance: 12500,
+      billingAddress: { attention: "R. Alvarez", addressLine1: "44 Freight Yard Road", addressLine2: "Okhla Industrial Area", city: "New Delhi", state: "Delhi", pinCode: "110020", country: "India", phone: "+91 11 4956 7890" },
+      contactPersons: [{ salutation: "Ms.", firstName: "R.", lastName: "Alvarez", email: "accounts@northpeaklogistics.example", workPhone: "+91 11 4956 7890", mobile: "+91 98110 44556" }],
+      bankDetails: { beneficiaryName: "NorthPeak Logistics Pvt Ltd", bankName: "ICICI Bank", accountNumber: "003405006789", ifsc: "ICIC0000034", branch: "Okhla" },
+      customFields: [], reportingTags: ["High Risk"], remarks: "Risk tier escalated Jun 2026 — see Vendor 360 profile."
     },
     {
-      vendorId: "VEND-0043", name: "TechCorp Inc.", category: "IT Services",
-      totalSpend: 118200, invoiceCount: 52, mismatchRate: "4%", avgCycleTime: 2.1,
+      vendorId: "VEND-0043", name: "TechCorp Inc.", companyName: "TechCorp Inc.",
+      displayName: "TechCorp Inc.", category: "IT Services",
+      totalSpend: 118200, invoiceCount: 52, mismatchRate: 4, avgCycleTime: 2.1,
       onTimeDeliveryPct: 98.1, contractCompliancePct: 99.0, riskTier: "Low",
-      openDisputes: 0, lastInvoiceDate: "2026-07-06", trend: "flat"
+      openDisputes: 0, lastInvoiceDate: "2026-07-06", trend: "flat",
+      email: "billing@techcorp.example", phone: "+91 80 4123 9900", language: "English",
+      pan: "AABCT9012M", gstin: "29AABCT9012M1ZR", msmeRegistered: false,
+      currency: "INR", paymentTerms: "Net 30", tds: "194J - Professional/Technical Services", portalEnabled: true,
+      openingBalance: 0,
+      billingAddress: { attention: "Finance Desk", addressLine1: "Tower B, Prestige Tech Park", addressLine2: "Kadubeesanahalli", city: "Bengaluru", state: "Karnataka", pinCode: "560103", country: "India", phone: "+91 80 4123 9900" },
+      contactPersons: [{ salutation: "Mr.", firstName: "Arjun", lastName: "Rao", email: "arjun.rao@techcorp.example", workPhone: "+91 80 4123 9900", mobile: "+91 90080 12345" }],
+      bankDetails: { beneficiaryName: "TechCorp Inc.", bankName: "Axis Bank", accountNumber: "917020098765", ifsc: "UTIB0001122", branch: "Kadubeesanahalli" },
+      customFields: [], reportingTags: [], remarks: ""
+    },
+    {
+      vendorId: "VEND-0045", name: "Sundar Fabricators Pvt Ltd", companyName: "Sundar Fabricators Pvt Ltd",
+      displayName: "Sundar Fabricators", category: "Raw Materials",
+      totalSpend: 54200, invoiceCount: 31, mismatchRate: 9, avgCycleTime: 3.4,
+      onTimeDeliveryPct: 94.0, contractCompliancePct: 92.5, riskTier: "Low",
+      openDisputes: 1, lastInvoiceDate: "2026-06-28", trend: "flat",
+      email: "accounts@sundarfab.example", phone: "+91 98450 22110", language: "English",
+      pan: "AAOFS3344K", gstin: "33AAOFS3344K1Z9", msmeRegistered: true,
+      currency: "INR", paymentTerms: "Net 15", tds: "194C - Contractors", portalEnabled: false,
+      openingBalance: 8000,
+      billingAddress: { attention: "S. Sundar", addressLine1: "12/3 Ambattur Industrial Estate", addressLine2: "", city: "Chennai", state: "Tamil Nadu", pinCode: "600058", country: "India", phone: "+91 44 2625 1190" },
+      contactPersons: [{ salutation: "Mr.", firstName: "S.", lastName: "Sundar", email: "s.sundar@sundarfab.example", workPhone: "+91 44 2625 1190", mobile: "+91 98450 22110" }],
+      bankDetails: { beneficiaryName: "Sundar Fabricators Pvt Ltd", bankName: "State Bank of India", accountNumber: "31245678901", ifsc: "SBIN0001456", branch: "Ambattur" },
+      customFields: [], reportingTags: ["MSME"], remarks: ""
+    },
+    {
+      vendorId: "VEND-0046", name: "Bharat Cloud Services", companyName: "Bharat Cloud Services LLP",
+      displayName: "Bharat Cloud Services", category: "IT Services",
+      totalSpend: 39800, invoiceCount: 18, mismatchRate: 2, avgCycleTime: 1.6,
+      onTimeDeliveryPct: 99.4, contractCompliancePct: 100.0, riskTier: "Low",
+      openDisputes: 0, lastInvoiceDate: "2026-07-01", trend: "down",
+      email: "finance@bharatcloud.example", phone: "+91 40 6789 1200", language: "English",
+      pan: "AAPFB7788N", gstin: "36AAPFB7788N1ZC", msmeRegistered: false,
+      currency: "INR", paymentTerms: "Due on Receipt", tds: "194J - Professional/Technical Services", portalEnabled: true,
+      openingBalance: 0,
+      billingAddress: { attention: "Priya Nair", addressLine1: "3rd Floor, Cyber Towers", addressLine2: "HITEC City", city: "Hyderabad", state: "Telangana", pinCode: "500081", country: "India", phone: "+91 40 6789 1200" },
+      contactPersons: [{ salutation: "Ms.", firstName: "Priya", lastName: "Nair", email: "priya.nair@bharatcloud.example", workPhone: "+91 40 6789 1200", mobile: "+91 90000 55221" }],
+      bankDetails: { beneficiaryName: "Bharat Cloud Services LLP", bankName: "Kotak Mahindra Bank", accountNumber: "8908001234567", ifsc: "KKBK0000456", branch: "HITEC City" },
+      customFields: [], reportingTags: [], remarks: ""
     }
   ]
 };

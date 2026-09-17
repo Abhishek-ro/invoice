@@ -8,7 +8,7 @@ const STATUS_MAP = {
   duplicate_flagged:  { label: 'Duplicate Flagged', className: 'ir-badge-purple' },
 };
 
-export default function StatusBadge({ status }) {
+export default function StatusBadge({ status, compact = false }) {
   const s = STATUS_MAP[status] || { label: 'Unknown', className: 'ir-badge-neutral' };
-  return <span className={`ir-badge ${s.className}`}>{s.label}</span>;
+  return <span className={`ir-badge ${s.className}${compact ? ' ir-badge--compact' : ''}`}>{s.label}</span>;
 }
