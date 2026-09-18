@@ -120,6 +120,15 @@ const formatsToAccept = (formats) =>
     .map((f) => FORMAT_EXT[f] || '')
     .filter(Boolean)
     .join(',');
+let lineRowSeq = 0;
+const nextLineRowKey = () => `doc-ln-${++lineRowSeq}`;
+const num = (v) => {
+  const n =
+    typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/,/g, ''));
+  return Number.isFinite(n) ? n : 0;
+};
+const round2 = (n) => Math.round(n * 100) / 100;
+const rowAmount = (r) => round2(num(r.quantity) * num(r.unit_price));
 function formatTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -149,6 +158,9 @@ export default function DocumentUploadStep({
   onJumpToNextFlag,
   onConfirmFlag,
   onFieldChange,
+  onLineItemChange,
+  onLineItemAdd,
+  onLineItemRemove,
   registerFieldRef,
   onBack,
   onContinue,
@@ -160,6 +172,7 @@ export default function DocumentUploadStep({
   const norm = (v) => String(v).trim().toLowerCase();
   const docStamp = title.replace(/^Attach /, '');
 
+  // This comparison is calculated independently for each extracted document.
   // "Compared to invoice" rows (left card, bottom) — text match on
   // supplier/reference, numeric diff on the money fields. Only shows a
   // row when both sides actually have a value to compare (GRN/quality
@@ -573,36 +586,132 @@ export default function DocumentUploadStep({
                         </div>
                         {doc.lineItems?.length > 0 && (
                           <div
-                            style={{
-                              fontSize: 12,
-                              color: 'var(--gray-700)',
-                              marginBottom: 12,
-                            }}
+                            className='ir-inv-items'
+                            style={{ marginBottom: 12 }}
                           >
-                            {doc.lineItems.map((li) => (
-                              <div
-                                key={li.line_no}
-                                style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  gap: 8,
-                                  padding: '3px 0',
-                                }}
+                            <div className='ir-inv-items__head'>
+                              <span className='ir-inv-items__title'>
+                                Line items
+                              </span>
+                              <span className='ir-inv-items__count'>
+                                {doc.lineItems.length} line
+                                {doc.lineItems.length === 1 ? '' : 's'}
+                              </span>
+                            </div>
+                            <div className='ir-inv-tablewrap'>
+                              <table className='ir-inv-table'>
+                                <thead>
+                                  <tr>
+                                    <th className='ir-inv-th--item'>
+                                      Item / Description
+                                    </th>
+                                    <th className='ir-inv-th--num'>Quantity</th>
+                                    <th className='ir-inv-th--num'>
+                                      Unit Rate
+                                    </th>
+                                    <th className='ir-inv-th--num'>Amount</th>
+                                    <th
+                                      className='ir-inv-th--act'
+                                      aria-label='Remove row'
+                                    />
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {doc.lineItems.map((row, i) => (
+                                    <tr key={row.rowKey || nextLineRowKey()}>
+                                      <td>
+                                        <input
+                                          className='ir-inv-cell'
+                                          value={row.description}
+                                          placeholder='Item name or description'
+                                          onChange={(e) =>
+                                            onLineItemChange(
+                                              i,
+                                              'description',
+                                              e.target.value,
+                                            )
+                                          }
+                                        />
+                                        <input
+                                          className='ir-inv-cell ir-inv-cell--sub'
+                                          value={row.sku}
+                                          placeholder='SKU / item code'
+                                          onChange={(e) =>
+                                            onLineItemChange(
+                                              i,
+                                              'sku',
+                                              e.target.value,
+                                            )
+                                          }
+                                        />
+                                      </td>
+                                      <td>
+                                        <input
+                                          className='ir-inv-cell ir-inv-cell--num'
+                                          inputMode='decimal'
+                                          value={row.quantity}
+                                          onChange={(e) =>
+                                            onLineItemChange(
+                                              i,
+                                              'quantity',
+                                              e.target.value,
+                                            )
+                                          }
+                                        />
+                                      </td>
+                                      <td>
+                                        <input
+                                          className='ir-inv-cell ir-inv-cell--num'
+                                          inputMode='decimal'
+                                          value={row.unit_price}
+                                          onChange={(e) =>
+                                            onLineItemChange(
+                                              i,
+                                              'unit_price',
+                                              e.target.value,
+                                            )
+                                          }
+                                        />
+                                      </td>
+                                      <td className='ir-inv-amount'>
+                                        {rowAmount(row).toFixed(2)}
+                                      </td>
+                                      <td className='ir-inv-td--act'>
+                                        <button
+                                          type='button'
+                                          className='ir-inv-rowdel'
+                                          title='Remove this line'
+                                          disabled={doc.lineItems.length === 1}
+                                          onClick={() => onLineItemRemove(i)}
+                                        >
+                                          ×
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            <div className='ir-inv-items__foot'>
+                              <button
+                                type='button'
+                                className='ir-inv-addrow'
+                                onClick={onLineItemAdd}
                               >
-                                <span
-                                  style={{
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
-                                  }}
-                                >
-                                  {li.description} ×{li.quantity}
-                                </span>
-                                <span style={{ flexShrink: 0 }}>
-                                  {li.line_total.toFixed(2)}
-                                </span>
+                                + Add another line
+                              </button>
+                              <div className='ir-inv-items__sub'>
+                                <span>Sub Total</span>
+                                <strong>
+                                  {doc.lineItems
+                                    .reduce(
+                                      (sum, line) => sum + rowAmount(line),
+                                      0,
+                                    )
+                                    .toFixed(2)}
+                                </strong>
                               </div>
-                            ))}
+                            </div>
                           </div>
                         )}
                         {typeof extracted.total === 'number' && (
@@ -716,46 +825,6 @@ export default function DocumentUploadStep({
                         Remove file
                       </button>
                     </div>
-
-                    {comparisonRows.length > 0 && (
-                      <div className='ir-doc-compare'>
-                        <div className='ir-doc-compare__title'>
-                          Compared to invoice {invoiceData?.doc_number || ''}
-                        </div>
-                        <div
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 5,
-                          }}
-                        >
-                          {comparisonRows.map((row) => (
-                            <div
-                              key={row.label}
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                fontSize: 12.5,
-                              }}
-                            >
-                              <span style={{ color: 'var(--gray-600)' }}>
-                                {row.label}
-                              </span>
-                              <span
-                                style={{
-                                  fontWeight: 700,
-                                  color: row.ok
-                                    ? 'var(--tint-success-text)'
-                                    : 'var(--tint-danger-text)',
-                                }}
-                              >
-                                {row.text}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {/* RIGHT — every real extracted field as its own card, with

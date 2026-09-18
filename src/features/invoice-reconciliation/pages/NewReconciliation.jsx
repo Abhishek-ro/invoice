@@ -3,6 +3,26 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
+  Check,
+  ArrowRight,
+  FileSearch,
+  ShieldCheck,
+  Building2,
+  Hash,
+  Wallet,
+  ChevronRight,
+  FileText,
+  Package,
+  Clock,
+  FileSignature,
+  UploadCloud,
+  Database,
+  CheckCircle2,
+  AlertTriangle,
+  RotateCcw,
+  Loader2,
+} from 'lucide-react';
+import {
   uploadDocument,
   confirmDocument,
   checkDocumentHash,
@@ -13,6 +33,11 @@ import {
   ApiError,
 } from '../api';
 import DocumentUploadStep from '../components/new-reconciliation/DocumentUploadStep';
+import LanguageSelector from '../components/shared/LanguageSelector';
+import MatchingStrategyStep from '../components/new-reconciliation/MatchingStrategyStep';
+import { DOC_TONE } from '../components/new-reconciliation/docMeta';
+
+const INVOICE_OCR_LANGUAGES = ['English', 'Hindi', 'Arabic', 'Chinese', 'Japanese'];
 
 /* ── Icons ───────────────────────────────────────── */
 const UploadIcon = () => (
@@ -428,6 +453,30 @@ function mapGrnDigitization(res) {
   };
 }
 
+function mapPoLineItems(res) {
+  const lines = res.po_data?.lines ?? [];
+  return lines.map((l, i) => ({
+    line_no: l.line_number ?? i + 1,
+    description: l.description ?? '',
+    sku: l.vendor_part_number ?? '',
+    uom: l.unit_of_measure ?? 'EA',
+    quantity: l.req_qty ?? 1,
+    unit_price: l.unit_price ?? 0,
+  }));
+}
+
+function mapGrnLineItems(res) {
+  const lines = res.receipt_doc?.receipt_lines ?? [];
+  return lines.map((l, i) => ({
+    line_no: l.line_number ?? i + 1,
+    description: l.description ?? '',
+    sku: l.item_code ?? '',
+    uom: l.unit_of_measure ?? 'EA',
+    quantity: l.accepted_qty ?? 1,
+    unit_price: l.unit_price ?? 0,
+  }));
+}
+
 function mapSlaDigitization(res) {
   const s = res.sla_data || {};
   return {
@@ -462,6 +511,25 @@ const DOC_ID_TO_MAPPER = {
   service_entry: mapTimesheetDigitization,
   contracts: mapSlaDigitization,
 };
+const DOC_ID_TO_LINE_MAPPER = {
+  po: mapPoLineItems,
+  grn: mapGrnLineItems,
+  service_entry: () => [],
+  contracts: () => [],
+};
+
+const DOC_RAW_KEY = {
+  po: 'po_data',
+  grn: 'receipt_doc',
+  service_entry: 'receipt_doc',
+  contracts: 'sla_data',
+};
+function getDocConfidencePct(rawDigitization, docId) {
+  const raw =
+    rawDigitization?.[DOC_RAW_KEY[docId]]?.extraction_quality
+      ?.overall_confidence;
+  return raw != null ? Math.round(raw * 100) : null;
+}
 
 function formatTime(iso) {
   if (!iso) return '';
@@ -2992,6 +3060,7 @@ function makeDocState() {
     source: 'manual',
     file: null,
     fetched: false,
+    skipped: false,
     fetching: false,
     documentId: null,
     confirming: false,
@@ -3192,6 +3261,61 @@ function batchReducer(state, action) {
           .filter((_, i) => i !== action.index)
           .map((r, i) => ({ ...r, line_no: i + 1 })),
       }));
+    case 'INV_DOC_LINE_ITEM_CHANGED':
+      return mapInv(state, action.id, (inv) => ({
+        ...inv,
+        docStates: {
+          ...inv.docStates,
+          [action.docId]: {
+            ...inv.docStates[action.docId],
+            lineItems: inv.docStates[action.docId].lineItems.map((r, i) =>
+              i === action.index ? { ...r, [action.key]: action.value } : r,
+            ),
+          },
+        },
+      }));
+    case 'INV_DOC_LINE_ITEM_ADDED':
+      return mapInv(state, action.id, (inv) => {
+        const doc = inv.docStates[action.docId];
+        return {
+          ...inv,
+          docStates: {
+            ...inv.docStates,
+            [action.docId]: {
+              ...doc,
+              lineItems: [
+                ...doc.lineItems,
+                {
+                  rowKey: nextLineRowKey(),
+                  id: null,
+                  line_no: doc.lineItems.length + 1,
+                  description: '',
+                  sku: '',
+                  uom: 'EA',
+                  quantity: 1,
+                  unit_price: 0,
+                },
+              ],
+            },
+          },
+        };
+      });
+    case 'INV_DOC_LINE_ITEM_REMOVED':
+      return mapInv(state, action.id, (inv) => {
+        const doc = inv.docStates[action.docId];
+        return {
+          ...inv,
+          docStates: {
+            ...inv.docStates,
+            [action.docId]: {
+              ...doc,
+              lineItems: doc.lineItems
+                .filter((_, i) => i !== action.index)
+                .map((r, i) => ({ ...r, line_no: i + 1 })),
+            },
+          },
+        };
+      });
     case 'INV_NOTES_CHANGED':
       return mapInv(state, action.id, (inv) => ({
         ...inv,
@@ -3269,6 +3393,7 @@ function batchReducer(state, action) {
             file: action.file,
             confirming: true,
             error: null,
+            skipped: false,
           },
         },
       }));
@@ -3306,6 +3431,18 @@ function batchReducer(state, action) {
           },
         },
       }));
+    case 'INV_DOC_SKIPPED':
+      return mapInv(state, action.id, (inv) => ({
+        ...inv,
+        docStates: {
+          ...inv.docStates,
+          [action.docId]: {
+            ...inv.docStates[action.docId],
+            skipped: true,
+            error: null,
+          },
+        },
+      }));
     case 'INV_DOC_FLAG_CONFIRMED':
       return mapInv(state, action.id, (inv) => {
         const target = inv.docStates[action.docId];
@@ -3339,7 +3476,6 @@ function batchReducer(state, action) {
     case 'INV_DOC_CONFIRM_SUCCESS':
       return mapInv(state, action.id, (inv) => ({
         ...inv,
-        pipelineStepIndex: inv.pipelineStepIndex + 1,
         docStates: {
           ...inv.docStates,
           [action.docId]: { ...inv.docStates[action.docId], submitting: false },
@@ -3421,31 +3557,11 @@ const STATUS_META = {
   error: { label: 'Error', tone: 'ir-badge-danger' },
 };
 
-const STATUS_PROGRESS = {
-  pending: 0,
-  hashing: 15,
-  'checking-duplicate': 35,
-  processing: 75,
-  duplicate: 100,
-  'needs-review': 100,
-  reviewed: 100,
-  error: 0,
-};
-
-const STATUS_PROGRESS_LABEL = {
-  pending: 'Waiting to start',
-  hashing: 'Preparing secure file check',
-  'checking-duplicate': 'Checking for an existing invoice',
-  processing: 'Reading invoice details',
-  duplicate: 'Duplicate check complete',
-  'needs-review': 'Extraction complete',
-  reviewed: 'Upload complete',
-};
-
-const STATUS_PROGRESS_CEILING = {
-  hashing: 30,
-  'checking-duplicate': 60,
-  processing: 90,
+const STEP_DESCRIPTION = {
+  hashing: 'Preparing to check for duplicates',
+  'checking-duplicate':
+    "Making sure this invoice hasn't already been submitted",
+  processing: 'Reading the invoice details',
 };
 
 function formatDateTime(iso) {
@@ -3458,25 +3574,10 @@ function formatDateTime(iso) {
 
 function InvoiceFileRow({ invoice, onRemove }) {
   const meta = STATUS_META[invoice.status] || STATUS_META.pending;
-  const progress = STATUS_PROGRESS[invoice.status] ?? 0;
-  const [displayProgress, setDisplayProgress] = useState(progress);
   const spinning =
     invoice.status === 'hashing' ||
     invoice.status === 'checking-duplicate' ||
     invoice.status === 'processing';
-
-  useEffect(() => {
-    setDisplayProgress(progress);
-    if (!spinning) return undefined;
-    const ceiling = STATUS_PROGRESS_CEILING[invoice.status] ?? progress;
-    const timer = setInterval(() => {
-      setDisplayProgress((current) =>
-        current >= ceiling ? current : Math.min(current + 1, ceiling),
-      );
-    }, 700);
-    return () => clearInterval(timer);
-  }, [invoice.status, progress, spinning]);
-
   return (
     <div
       style={{
@@ -3492,7 +3593,22 @@ function InvoiceFileRow({ invoice, onRemove }) {
             : 'var(--primary-white)',
       }}
     >
-      <div
+      <motion.div
+        animate={
+          spinning
+            ? {
+                boxShadow: [
+                  '0 0 0 0 rgba(37, 99, 235, 0.25)',
+                  '0 0 0 6px rgba(37, 99, 235, 0)',
+                ],
+              }
+            : { boxShadow: '0 0 0 0 rgba(37, 99, 235, 0)' }
+        }
+        transition={
+          spinning
+            ? { repeat: Infinity, duration: 1.6, ease: 'easeOut' }
+            : { duration: 0.2 }
+        }
         style={{
           color: 'var(--primary-blue)',
           background: 'var(--primary-50)',
@@ -3502,7 +3618,7 @@ function InvoiceFileRow({ invoice, onRemove }) {
         }}
       >
         <FileTextIcon />
-      </div>
+      </motion.div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
@@ -3527,44 +3643,58 @@ function InvoiceFileRow({ invoice, onRemove }) {
           {formatFileSize(invoice.fileSize)}
         </div>
         {spinning && (
-          <div style={{ marginTop: '8px', maxWidth: '360px' }}>
+          <div style={{ marginTop: '10px', maxWidth: '300px' }}>
             <div
               style={{
                 display: 'flex',
-                justifyContent: 'space-between',
                 alignItems: 'center',
-                gap: '10px',
-                fontSize: '11px',
-                color: 'var(--gray-500)',
-                marginBottom: '4px',
+                gap: '7px',
+                marginBottom: '7px',
               }}
             >
-              <span>{STATUS_PROGRESS_LABEL[invoice.status]}</span>
-              <strong style={{ color: 'var(--primary-blue)' }}>
-                {displayProgress}%
-              </strong>
+              <motion.span
+                animate={{ opacity: [0.3, 1, 0.3] }}
+                transition={{
+                  repeat: Infinity,
+                  duration: 1.5,
+                  ease: 'easeInOut',
+                }}
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: 'var(--primary-blue)',
+                  flexShrink: 0,
+                }}
+              />
+              <span style={{ fontSize: '12px', color: 'var(--gray-600)' }}>
+                {STEP_DESCRIPTION[invoice.status]}
+              </span>
             </div>
             <div
-              role='progressbar'
-              aria-label={`Invoice upload progress: ${displayProgress}%`}
-              aria-valuemin='0'
-              aria-valuemax='100'
-              aria-valuenow={displayProgress}
               style={{
-                height: '5px',
-                background: 'var(--gray-200)',
+                position: 'relative',
+                height: '4px',
                 borderRadius: '999px',
+                background: 'var(--gray-200)',
                 overflow: 'hidden',
               }}
             >
               <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${displayProgress}%` }}
-                transition={{ duration: 0.35, ease: 'easeOut' }}
+                animate={{ left: ['-40%', '100%'] }}
+                transition={{
+                  repeat: Infinity,
+                  duration: 1.2,
+                  ease: 'easeInOut',
+                }}
                 style={{
-                  height: '100%',
-                  background: 'var(--primary-blue)',
-                  borderRadius: 'inherit',
+                  position: 'absolute',
+                  top: 0,
+                  bottom: 0,
+                  width: '40%',
+                  borderRadius: '999px',
+                  background:
+                    'linear-gradient(90deg, transparent, var(--primary-blue), transparent)',
                 }}
               />
             </div>
@@ -3600,31 +3730,19 @@ function InvoiceFileRow({ invoice, onRemove }) {
           </div>
         )}
       </div>
-      <span
-        className={`ir-badge ${meta.tone}`}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '6px',
-          flexShrink: 0,
-        }}
-      >
-        {spinning && (
-          <motion.span
-            animate={{ rotate: 360 }}
-            transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
-            style={{
-              width: 10,
-              height: 10,
-              border: '2px solid currentColor',
-              borderTopColor: 'transparent',
-              borderRadius: '50%',
-              display: 'inline-block',
-            }}
-          />
-        )}
-        {meta.label}
-      </span>
+      {!spinning && (
+        <span
+          className={`ir-badge ${meta.tone}`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            flexShrink: 0,
+          }}
+        >
+          {meta.label}
+        </span>
+      )}
       <button
         type='button'
         onClick={() => onRemove(invoice.id)}
@@ -3673,6 +3791,10 @@ function BatchUploadStep({
 }) {
   const inputRef = useRef();
   const [dragOver, setDragOver] = useState(false);
+  const [channel, setChannel] = useState('upload');
+  const [setupChannel, setSetupChannel] = useState(null);
+  const activeChannel =
+    INGESTION_CHANNELS.find((c) => c.id === channel) ?? INGESTION_CHANNELS[0];
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -3724,17 +3846,14 @@ function BatchUploadStep({
           >
             Invoice language
           </label>
-          <select
+          <LanguageSelector
             value={language}
-            onChange={(e) => onLanguageChange(e.target.value)}
-            className='dash-select'
-          >
-            <option value='English'>English</option>
-            <option value='Hindi'>Hindi</option>
-            <option value='Arabic'>Arabic</option>
-            <option value='Chinese'>Chinese</option>
-            <option value='Japanese'>Japanese</option>
-          </select>
+            onChange={onLanguageChange}
+            languages={INVOICE_OCR_LANGUAGES}
+            placeholder='Select language'
+            width='170px'
+            minWidth='150px'
+          />
         </div>
       </div>
 
@@ -3751,54 +3870,79 @@ function BatchUploadStep({
         }}
       />
 
-      <div
-        onClick={() => inputRef.current.click()}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={handleDrop}
-        style={{
-          border: `2px dashed ${dragOver ? 'var(--primary-blue)' : 'var(--gray-300)'}`,
-          borderRadius: '16px',
-          padding: invoices.length ? '2rem' : '3.5rem 2rem',
-          textAlign: 'center',
-          cursor: 'pointer',
-          background: dragOver
-            ? 'var(--primary-50)'
-            : 'linear-gradient(180deg, var(--gray-50) 0%, var(--gray-100) 100%)',
-          transition: 'all 0.15s',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '0.75rem',
-          marginBottom: invoices.length ? '1.5rem' : 0,
-        }}
-      >
+      {invoices.length === 0 && (
+        <div className='ir-chantabs' role='tablist' aria-label='Invoice source'>
+          {INGESTION_CHANNELS.map((c) => (
+            <button
+              key={c.id}
+              type='button'
+              role='tab'
+              aria-selected={channel === c.id}
+              className={`ir-chantab${channel === c.id ? ' is-on' : ''}`}
+              onClick={() => setChannel(c.id)}
+            >
+              <span className='ir-chantab__icon'>{c.icon}</span>
+              {c.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {channel === 'upload' ? (
         <div
+          onClick={() => inputRef.current.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
           style={{
-            color: 'var(--primary-blue)',
-            background: 'var(--primary-50)',
-            padding: '14px',
-            borderRadius: '50%',
+            border: `2px dashed ${dragOver ? 'var(--primary-blue)' : 'var(--gray-300)'}`,
+            borderRadius: '16px',
+            padding: invoices.length ? '2rem' : '3.5rem 2rem',
+            textAlign: 'center',
+            cursor: 'pointer',
+            background: dragOver
+              ? 'var(--primary-50)'
+              : 'linear-gradient(180deg, var(--gray-50) 0%, var(--gray-100) 100%)',
+            transition: 'all 0.15s',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '0.75rem',
+            marginBottom: invoices.length ? '1.5rem' : 0,
           }}
         >
-          <UploadIcon />
+          <div
+            style={{
+              color: 'var(--primary-blue)',
+              background: 'var(--primary-50)',
+              padding: '14px',
+              borderRadius: '50%',
+            }}
+          >
+            <UploadIcon />
+          </div>
+          <div
+            style={{
+              fontSize: '16px',
+              fontWeight: 700,
+              color: 'var(--gray-800)',
+            }}
+          >
+            Click or drag invoice files here
+          </div>
+          <div style={{ fontSize: '13px', color: 'var(--gray-500)' }}>
+            PDF, Word, Excel, CSV, JPG or EDI · up to 15 MB each
+          </div>
         </div>
-        <div
-          style={{
-            fontSize: '16px',
-            fontWeight: 700,
-            color: 'var(--gray-800)',
-          }}
-        >
-          Click or drag invoice files here
-        </div>
-        <div style={{ fontSize: '13px', color: 'var(--gray-500)' }}>
-          PDF, Word, Excel, CSV, JPG or EDI · up to 15 MB each
-        </div>
-      </div>
+      ) : (
+        <ChannelPanel
+          channel={activeChannel}
+          onOpen={() => setSetupChannel(activeChannel)}
+        />
+      )}
 
       {invoices.length > 0 && (
         <div
@@ -3834,6 +3978,13 @@ function BatchUploadStep({
       >
         {busy ? 'Processing…' : 'Review extracted invoices →'}
       </button>
+
+      {setupChannel && (
+        <ChannelSetupModal
+          channel={setupChannel}
+          onClose={() => setSetupChannel(null)}
+        />
+      )}
     </motion.div>
   );
 }
@@ -3900,6 +4051,19 @@ function InvoiceHitlStep({
   const avgConfidence = scored.length
     ? Math.round(scored.reduce((a, b) => a + b, 0) / scored.length)
     : null;
+  const [forceReview, setForceReview] = useState(false);
+  const rawOverallConfidence =
+    invoice.rawDigitization?.invoice_data?.extraction_quality
+      ?.overall_confidence;
+  const overallConfidencePct =
+    rawOverallConfidence != null
+      ? Math.round(rawOverallConfidence * 100)
+      : null;
+  const isHighConfidence =
+    overallConfidencePct != null &&
+    overallConfidencePct >= 98 &&
+    flaggedCount === 0;
+  const showGate = isHighConfidence && !forceReview;
   const subTotal = round2(
     invoice.lineItems.reduce((s, r) => s + rowAmount(r), 0),
   );
@@ -3954,6 +4118,9 @@ function InvoiceHitlStep({
             type='button'
             onClick={() => setShowAnalysis(true)}
             style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '7px',
               padding: '8px 14px',
               borderRadius: '8px',
               border: '1px solid var(--gray-300)',
@@ -3965,400 +4132,653 @@ function InvoiceHitlStep({
               whiteSpace: 'nowrap',
             }}
           >
+            <FileSearch size={15} />
             Detailed Analysis
           </button>
         </div>
       </div>
 
-      <div className='ir-inv-review'>
-        <aside className='ir-inv-doc'>
-          <div className='ir-inv-doc__head'>
-            <span className='ir-inv-doc__heading'>Source document</span>
+      {!showGate && (
+        <>
+          <div className='ir-inv-review'>
+            <aside className='ir-inv-doc'>
+              <div className='ir-inv-doc__head'>
+                <span className='ir-inv-doc__heading'>Source document</span>
+              </div>
+              <PdfPreviewFrame file={invoice.file} />
+              <div className='ir-inv-doc__meta'>
+                <div className='ir-inv-doc__name' title={invoice.fileName}>
+                  {invoice.fileName}
+                </div>
+                <div className='ir-inv-doc__row'>
+                  <span
+                    className='ir-badge ir-badge-success'
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    PROCESSED
+                  </span>
+                  <span className='ir-inv-doc__size'>
+                    {formatFileSize(invoice.fileSize)}
+                  </span>
+                </div>
+              </div>
+            </aside>
+
+            <section className='ir-inv-form'>
+              <div className='ir-inv-form__head'>
+                <div>
+                  <div className='ir-inv-form__title'>Invoice details</div>
+                  <div className='ir-inv-form__sub'>
+                    Pre-filled by extraction. Every field and row below is
+                    editable.
+                  </div>
+                </div>
+                <div className='ir-inv-form__chips'>
+                  <span className='ir-inv-ai'>
+                    AI EXTRACTED
+                    {avgConfidence != null ? ` · ${avgConfidence}% avg` : ''}
+                  </span>
+                  {flaggedCount > 0 && (
+                    <span className='ir-badge ir-badge-warning'>
+                      {flaggedCount} need{flaggedCount === 1 ? 's' : ''}{' '}
+                      confirmation
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className='ir-inv-grid'>
+                {entries.map((f) => (
+                  <InvoiceField
+                    key={f.key}
+                    field={f}
+                    onChange={onFieldChange}
+                    onAcceptAlt={onAcceptAlt}
+                  />
+                ))}
+              </div>
+
+              <div className='ir-inv-items'>
+                <div className='ir-inv-items__head'>
+                  <span className='ir-inv-items__title'>Item table</span>
+                  <span className='ir-inv-items__count'>
+                    {invoice.lineItems.length} line
+                    {invoice.lineItems.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <div className='ir-inv-tablewrap'>
+                  <table className='ir-inv-table'>
+                    <thead>
+                      <tr>
+                        <th className='ir-inv-th--item'>Item / Description</th>
+                        <th className='ir-inv-th--num'>Quantity</th>
+                        <th className='ir-inv-th--num'>Unit Rate</th>
+                        <th className='ir-inv-th--num'>Amount</th>
+                        <th
+                          className='ir-inv-th--act'
+                          aria-label='Remove row'
+                        />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoice.lineItems.map((row, i) => (
+                        <tr key={row.rowKey}>
+                          <td>
+                            <input
+                              className='ir-inv-cell'
+                              value={row.description}
+                              placeholder='Item name or description'
+                              onChange={(e) =>
+                                onLineItemChange(
+                                  i,
+                                  'description',
+                                  e.target.value,
+                                )
+                              }
+                            />
+                            <input
+                              className='ir-inv-cell ir-inv-cell--sub'
+                              value={row.sku}
+                              placeholder='SKU / item code'
+                              onChange={(e) =>
+                                onLineItemChange(i, 'sku', e.target.value)
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              className='ir-inv-cell ir-inv-cell--num'
+                              inputMode='decimal'
+                              value={row.quantity}
+                              onChange={(e) =>
+                                onLineItemChange(i, 'quantity', e.target.value)
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              className='ir-inv-cell ir-inv-cell--num'
+                              inputMode='decimal'
+                              value={row.unit_price}
+                              onChange={(e) =>
+                                onLineItemChange(
+                                  i,
+                                  'unit_price',
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          </td>
+                          <td className='ir-inv-amount'>
+                            {money(rowAmount(row), currency)}
+                          </td>
+                          <td className='ir-inv-td--act'>
+                            <button
+                              type='button'
+                              className='ir-inv-rowdel'
+                              title='Remove this line'
+                              disabled={invoice.lineItems.length === 1}
+                              onClick={() => onLineItemRemove(i)}
+                            >
+                              ×
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className='ir-inv-items__foot'>
+                  <button
+                    type='button'
+                    className='ir-inv-addrow'
+                    onClick={onLineItemAdd}
+                  >
+                    + Add another line
+                  </button>
+                  <div className='ir-inv-items__sub'>
+                    <span>Sub Total</span>
+                    <strong>{money(subTotal, currency)}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className='ir-inv-foot'>
+                <div className='ir-inv-notes'>
+                  <label
+                    className='ir-inv-notes__label'
+                    htmlFor={`hitl-notes-${invoice.id}`}
+                  >
+                    Notes <span>(optional)</span>
+                  </label>
+                  <textarea
+                    id={`hitl-notes-${invoice.id}`}
+                    className='ir-inv-notes__ta'
+                    value={invoice.notes}
+                    placeholder='Anything the matching engine or an approver should know about this invoice…'
+                    onChange={(e) => onNotesChange(e.target.value)}
+                  />
+                </div>
+                <div className='ir-inv-totals'>
+                  <div className='ir-inv-totals__row'>
+                    <span>Sub Total</span>
+                    <span className='ir-inv-totals__val'>
+                      {money(subTotal, currency)}
+                    </span>
+                  </div>
+                  <div className='ir-inv-totals__row'>
+                    <span>
+                      Tax
+                      {subTotal > 0 && (
+                        <em className='ir-inv-totals__rate'>
+                          ({taxRatePct.toFixed(1)}%)
+                        </em>
+                      )}
+                    </span>
+                    <input
+                      className='ir-inv-cell ir-inv-cell--num ir-inv-totals__input'
+                      inputMode='decimal'
+                      value={fields.tax_amount ?? ''}
+                      onChange={(e) =>
+                        onFieldChange('tax_amount', e.target.value)
+                      }
+                    />
+                  </div>
+                  <div className='ir-inv-totals__row ir-inv-totals__row--grand'>
+                    <span>Total</span>
+                    <span className='ir-inv-totals__val'>
+                      {money(total_, currency)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
-          <PdfPreviewFrame file={invoice.file} />
-          <div className='ir-inv-doc__meta'>
-            <div className='ir-inv-doc__name' title={invoice.fileName}>
-              {invoice.fileName}
-            </div>
-            <div className='ir-inv-doc__row'>
-              <span
-                className='ir-badge ir-badge-success'
+
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+            {index === 0 && (
+              <button
+                onClick={onBackToUpload}
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
+                  width: '140px',
+                  background: 'var(--primary-white)',
+                  color: 'var(--gray-700)',
+                  padding: '16px',
+                  borderRadius: '12px',
+                  fontWeight: 700,
+                  fontSize: '16px',
+                  border: '2px solid var(--gray-300)',
+                  cursor: 'pointer',
                 }}
               >
-                PROCESSED
-              </span>
-              <span className='ir-inv-doc__size'>
-                {formatFileSize(invoice.fileSize)}
-              </span>
-            </div>
-          </div>
-        </aside>
-
-        <section className='ir-inv-form'>
-          <div className='ir-inv-form__head'>
-            <div>
-              <div className='ir-inv-form__title'>Invoice details</div>
-              <div className='ir-inv-form__sub'>
-                Pre-filled by extraction. Every field and row below is editable.
-              </div>
-            </div>
-            <div className='ir-inv-form__chips'>
-              <span className='ir-inv-ai'>
-                AI EXTRACTED
-                {avgConfidence != null ? ` · ${avgConfidence}% avg` : ''}
-              </span>
-              {flaggedCount > 0 && (
-                <span className='ir-badge ir-badge-warning'>
-                  {flaggedCount} need{flaggedCount === 1 ? 's' : ''}{' '}
-                  confirmation
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className='ir-inv-grid'>
-            {entries.map((f) => (
-              <InvoiceField
-                key={f.key}
-                field={f}
-                onChange={onFieldChange}
-                onAcceptAlt={onAcceptAlt}
-              />
-            ))}
-          </div>
-
-          <div className='ir-inv-items'>
-            <div className='ir-inv-items__head'>
-              <span className='ir-inv-items__title'>Item table</span>
-              <span className='ir-inv-items__count'>
-                {invoice.lineItems.length} line
-                {invoice.lineItems.length === 1 ? '' : 's'}
-              </span>
-            </div>
-            <div className='ir-inv-tablewrap'>
-              <table className='ir-inv-table'>
-                <thead>
-                  <tr>
-                    <th className='ir-inv-th--item'>Item / Description</th>
-                    <th className='ir-inv-th--num'>Quantity</th>
-                    <th className='ir-inv-th--num'>Unit Rate</th>
-                    <th className='ir-inv-th--num'>Amount</th>
-                    <th className='ir-inv-th--act' aria-label='Remove row' />
-                  </tr>
-                </thead>
-                <tbody>
-                  {invoice.lineItems.map((row, i) => (
-                    <tr key={row.rowKey}>
-                      <td>
-                        <input
-                          className='ir-inv-cell'
-                          value={row.description}
-                          placeholder='Item name or description'
-                          onChange={(e) =>
-                            onLineItemChange(i, 'description', e.target.value)
-                          }
-                        />
-                        <input
-                          className='ir-inv-cell ir-inv-cell--sub'
-                          value={row.sku}
-                          placeholder='SKU / item code'
-                          onChange={(e) =>
-                            onLineItemChange(i, 'sku', e.target.value)
-                          }
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className='ir-inv-cell ir-inv-cell--num'
-                          inputMode='decimal'
-                          value={row.quantity}
-                          onChange={(e) =>
-                            onLineItemChange(i, 'quantity', e.target.value)
-                          }
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className='ir-inv-cell ir-inv-cell--num'
-                          inputMode='decimal'
-                          value={row.unit_price}
-                          onChange={(e) =>
-                            onLineItemChange(i, 'unit_price', e.target.value)
-                          }
-                        />
-                      </td>
-                      <td className='ir-inv-amount'>
-                        {money(rowAmount(row), currency)}
-                      </td>
-                      <td className='ir-inv-td--act'>
-                        <button
-                          type='button'
-                          className='ir-inv-rowdel'
-                          title='Remove this line'
-                          disabled={invoice.lineItems.length === 1}
-                          onClick={() => onLineItemRemove(i)}
-                        >
-                          ×
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className='ir-inv-items__foot'>
-              <button
-                type='button'
-                className='ir-inv-addrow'
-                onClick={onLineItemAdd}
-              >
-                + Add another line
+                ← Back
               </button>
-              <div className='ir-inv-items__sub'>
-                <span>Sub Total</span>
-                <strong>{money(subTotal, currency)}</strong>
-              </div>
-            </div>
+            )}
+            <button
+              onClick={onConfirmAndContinue}
+              disabled={invoice.confirming}
+              style={{
+                flex: 1,
+                background: invoice.confirming ? 'var(--gray-400)' : '#10b981',
+                color: 'white',
+                padding: '16px',
+                borderRadius: '12px',
+                fontWeight: 700,
+                fontSize: '16px',
+                border: 'none',
+                cursor: invoice.confirming ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {invoice.confirming
+                ? 'Confirming…'
+                : index + 1 < total
+                  ? `Confirm & Review Next Invoice (${index + 2} of ${total}) →`
+                  : 'Confirm & Continue to Matching →'}
+            </button>
           </div>
 
-          <div className='ir-inv-foot'>
-            <div className='ir-inv-notes'>
-              <label
-                className='ir-inv-notes__label'
-                htmlFor={`hitl-notes-${invoice.id}`}
+          {showAnalysis && (
+            <div
+              onClick={() => setShowAnalysis(false)}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(15, 23, 42, 0.45)',
+                zIndex: 1000,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '24px',
+              }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  background: 'var(--primary-white)',
+                  borderRadius: '16px',
+                  maxWidth: '640px',
+                  width: '100%',
+                  maxHeight: '80vh',
+                  overflowY: 'auto',
+                  padding: '24px',
+                  boxShadow: 'var(--shadow-md)',
+                }}
               >
-                Notes <span>(optional)</span>
-              </label>
-              <textarea
-                id={`hitl-notes-${invoice.id}`}
-                className='ir-inv-notes__ta'
-                value={invoice.notes}
-                placeholder='Anything the matching engine or an approver should know about this invoice…'
-                onChange={(e) => onNotesChange(e.target.value)}
-              />
-            </div>
-            <div className='ir-inv-totals'>
-              <div className='ir-inv-totals__row'>
-                <span>Sub Total</span>
-                <span className='ir-inv-totals__val'>
-                  {money(subTotal, currency)}
-                </span>
-              </div>
-              <div className='ir-inv-totals__row'>
-                <span>
-                  Tax
-                  {subTotal > 0 && (
-                    <em className='ir-inv-totals__rate'>
-                      ({taxRatePct.toFixed(1)}%)
-                    </em>
-                  )}
-                </span>
-                <input
-                  className='ir-inv-cell ir-inv-cell--num ir-inv-totals__input'
-                  inputMode='decimal'
-                  value={fields.tax_amount ?? ''}
-                  onChange={(e) => onFieldChange('tax_amount', e.target.value)}
-                />
-              </div>
-              <div className='ir-inv-totals__row ir-inv-totals__row--grand'>
-                <span>Total</span>
-                <span className='ir-inv-totals__val'>
-                  {money(total_, currency)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <h3
+                    style={{
+                      fontSize: '18px',
+                      fontWeight: 800,
+                      color: 'var(--gray-900)',
+                    }}
+                  >
+                    Detailed Analysis
+                  </h3>
+                  <button
+                    type='button'
+                    onClick={() => setShowAnalysis(false)}
+                    style={{
+                      border: 'none',
+                      background: 'none',
+                      fontSize: '18px',
+                      cursor: 'pointer',
+                      color: 'var(--gray-500)',
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
 
-      <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-        {index === 0 && (
-          <button
-            onClick={onBackToUpload}
-            style={{
-              width: '140px',
-              background: 'var(--primary-white)',
-              color: 'var(--gray-700)',
-              padding: '16px',
-              borderRadius: '12px',
-              fontWeight: 700,
-              fontSize: '16px',
-              border: '2px solid var(--gray-300)',
-              cursor: 'pointer',
-            }}
-          >
-            ← Back
-          </button>
-        )}
-        <button
-          onClick={onConfirmAndContinue}
-          disabled={invoice.confirming}
-          style={{
-            flex: 1,
-            background: invoice.confirming ? 'var(--gray-400)' : '#10b981',
-            color: 'white',
-            padding: '16px',
-            borderRadius: '12px',
-            fontWeight: 700,
-            fontSize: '16px',
-            border: 'none',
-            cursor: invoice.confirming ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {invoice.confirming
-            ? 'Confirming…'
-            : index + 1 < total
-              ? `Confirm & Review Next Invoice (${index + 2} of ${total}) →`
-              : 'Confirm & Continue to Matching →'}
-        </button>
-      </div>
+                {!invoice.rawDigitization ? (
+                  <p style={{ fontSize: '13px', color: 'var(--gray-500)' }}>
+                    Detailed analysis data isn't available for this invoice —
+                    try re-uploading it.
+                  </p>
+                ) : (
+                  <>
+                    {invoice.rawDigitization.invoice_data?.extraction_quality
+                      ?.overall_confidence != null && (
+                      <div
+                        style={{
+                          fontSize: '13px',
+                          color: 'var(--gray-700)',
+                          marginBottom: '16px',
+                        }}
+                      >
+                        Overall extraction confidence:{' '}
+                        <strong>
+                          {Math.round(
+                            invoice.rawDigitization.invoice_data
+                              .extraction_quality.overall_confidence * 100,
+                          )}
+                          %
+                        </strong>
+                      </div>
+                    )}
 
-      {showAnalysis && (
-        <div
-          onClick={() => setShowAnalysis(false)}
+                    {(invoice.rawDigitization.page_audit_trail || []).map(
+                      (page) => {
+                        const attempts = page.checker?.attempt_log || [];
+                        const lastAttempt = attempts[attempts.length - 1];
+                        const corrections =
+                          lastAttempt?.corrections_applied || [];
+                        return (
+                          <div
+                            key={page.page_number}
+                            style={{ marginBottom: '16px' }}
+                          >
+                            <div
+                              style={{
+                                fontSize: '12px',
+                                fontWeight: 800,
+                                color: 'var(--gray-600)',
+                                textTransform: 'uppercase',
+                                marginBottom: '6px',
+                              }}
+                            >
+                              Page {page.page_number} ·{' '}
+                              {page.checker?.verification_status || 'Unknown'}
+                            </div>
+                            {corrections.length ? (
+                              <ul
+                                style={{
+                                  margin: 0,
+                                  paddingLeft: '18px',
+                                  fontSize: '13px',
+                                  color: 'var(--gray-800)',
+                                  lineHeight: 1.6,
+                                }}
+                              >
+                                {corrections.map(
+                                  (correction, correctionIndex) => (
+                                    <li key={correctionIndex}>{correction}</li>
+                                  ),
+                                )}
+                              </ul>
+                            ) : (
+                              <p
+                                style={{
+                                  fontSize: '13px',
+                                  color: 'var(--gray-500)',
+                                  margin: 0,
+                                }}
+                              >
+                                No corrections were needed — extraction matched
+                                cleanly on the first pass.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      },
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {showGate && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: 'easeOut' }}
           style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.45)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '24px',
+            marginTop: '1.5rem',
+            background: 'var(--primary-white)',
+            border: '1px solid var(--gray-200)',
+            borderRadius: '16px',
+            overflow: 'hidden',
           }}
         >
           <div
-            onClick={(e) => e.stopPropagation()}
             style={{
-              background: 'var(--primary-white)',
-              borderRadius: '16px',
-              maxWidth: '640px',
-              width: '100%',
-              maxHeight: '80vh',
-              overflowY: 'auto',
-              padding: '24px',
-              boxShadow: 'var(--shadow-md)',
+              height: '5px',
+              background:
+                'linear-gradient(90deg, #10b981, var(--tint-success-border))',
             }}
-          >
+          />
+
+          <div style={{ padding: '1.75rem 2rem' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '16px',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div
+                style={{ display: 'flex', gap: '14px', alignItems: 'center' }}
+              >
+                <div
+                  style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '50%',
+                    background: '#10b981',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Check size={19} color='white' strokeWidth={3} />
+                </div>
+                <div>
+                  <h3
+                    style={{
+                      fontSize: '17px',
+                      fontWeight: 800,
+                      color: 'var(--gray-900)',
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    All fields matched. Ready to confirm.
+                  </h3>
+                  <p
+                    style={{
+                      fontSize: '13px',
+                      color: 'var(--gray-500)',
+                      marginTop: '2px',
+                    }}
+                  >
+                    Every value was checked against the source document and
+                    matched.
+                  </p>
+                </div>
+              </div>
+
+              <span
+                style={{
+                  flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 14px',
+                  borderRadius: '999px',
+                  background: 'var(--tint-success-bg)',
+                  border: '1px solid var(--tint-success-border)',
+                  color: 'var(--tint-success-text)',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <ShieldCheck size={14} />
+                {overallConfidencePct}% confidence
+              </span>
+            </div>
+
             <div
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '16px',
+                marginTop: '22px',
+                paddingTop: '18px',
+                borderTop: '1px solid var(--gray-100)',
+                gap: '20px',
+                flexWrap: 'wrap',
               }}
             >
-              <h3
-                style={{
-                  fontSize: '18px',
-                  fontWeight: 800,
-                  color: 'var(--gray-900)',
-                }}
-              >
-                Detailed Analysis
-              </h3>
-              <button
-                type='button'
-                onClick={() => setShowAnalysis(false)}
-                style={{
-                  border: 'none',
-                  background: 'none',
-                  fontSize: '18px',
-                  cursor: 'pointer',
-                  color: 'var(--gray-500)',
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {!invoice.rawDigitization ? (
-              <p style={{ fontSize: '13px', color: 'var(--gray-500)' }}>
-                Detailed analysis data isn't available for this invoice — try
-                re-uploading it.
-              </p>
-            ) : (
-              <>
-                {invoice.rawDigitization.invoice_data?.extraction_quality
-                  ?.overall_confidence != null && (
+              {[
+                {
+                  label: 'Vendor',
+                  value: fields.vendor_name || '—',
+                  Icon: Building2,
+                },
+                {
+                  label: 'Invoice Number',
+                  value: fields.doc_number || '—',
+                  Icon: Hash,
+                },
+                {
+                  label: 'Amount',
+                  value: money(total_, currency),
+                  Icon: Wallet,
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  style={{ minWidth: 0, maxWidth: '320px' }}
+                >
                   <div
                     style={{
-                      fontSize: '13px',
-                      color: 'var(--gray-700)',
-                      marginBottom: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      color: 'var(--gray-500)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.03em',
+                      marginBottom: '4px',
                     }}
                   >
-                    Overall extraction confidence:{' '}
-                    <strong>
-                      {Math.round(
-                        invoice.rawDigitization.invoice_data.extraction_quality
-                          .overall_confidence * 100,
-                      )}
-                      %
-                    </strong>
+                    <item.Icon size={12} />
+                    {item.label}
                   </div>
-                )}
+                  <div
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 700,
+                      color: 'var(--gray-900)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={item.value}
+                  >
+                    {item.value}
+                  </div>
+                </div>
+              ))}
+            </div>
 
-                {(invoice.rawDigitization.page_audit_trail || []).map(
-                  (page) => {
-                    const attempts = page.checker?.attempt_log || [];
-                    const lastAttempt = attempts[attempts.length - 1];
-                    const corrections = lastAttempt?.corrections_applied || [];
-                    return (
-                      <div
-                        key={page.page_number}
-                        style={{ marginBottom: '16px' }}
-                      >
-                        <div
-                          style={{
-                            fontSize: '12px',
-                            fontWeight: 800,
-                            color: 'var(--gray-600)',
-                            textTransform: 'uppercase',
-                            marginBottom: '6px',
-                          }}
-                        >
-                          Page {page.page_number} ·{' '}
-                          {page.checker?.verification_status || 'Unknown'}
-                        </div>
-                        {corrections.length ? (
-                          <ul
-                            style={{
-                              margin: 0,
-                              paddingLeft: '18px',
-                              fontSize: '13px',
-                              color: 'var(--gray-800)',
-                              lineHeight: 1.6,
-                            }}
-                          >
-                            {corrections.map((correction, correctionIndex) => (
-                              <li key={correctionIndex}>{correction}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p
-                            style={{
-                              fontSize: '13px',
-                              color: 'var(--gray-500)',
-                              margin: 0,
-                            }}
-                          >
-                            No corrections were needed — extraction matched
-                            cleanly on the first pass.
-                          </p>
-                        )}
-                      </div>
-                    );
-                  },
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '18px',
+                marginTop: '22px',
+                paddingTop: '18px',
+                borderTop: '1px solid var(--gray-100)',
+                flexWrap: 'wrap',
+              }}
+            >
+              <button
+                type='button'
+                onClick={onConfirmAndContinue}
+                disabled={invoice.confirming}
+                style={{
+                  background: invoice.confirming
+                    ? 'var(--gray-400)'
+                    : '#10b981',
+                  color: 'white',
+                  padding: '13px 26px',
+                  borderRadius: '10px',
+                  fontWeight: 700,
+                  fontSize: '15px',
+                  border: 'none',
+                  cursor: invoice.confirming ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {invoice.confirming ? (
+                  'Confirming…'
+                ) : (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    Confirm & Continue
+                    <ArrowRight size={16} />
+                  </span>
                 )}
-              </>
-            )}
+              </button>
+              <button
+                type='button'
+                onClick={() => setForceReview(true)}
+                style={{
+                  background: 'var(--primary-white)',
+                  color: 'var(--gray-700)',
+                  padding: '13px 22px',
+                  borderRadius: '10px',
+                  fontWeight: 700,
+                  fontSize: '15px',
+                  border: '1px solid var(--gray-300)',
+                  cursor: 'pointer',
+                }}
+              >
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  Review details anyway
+                  <ChevronRight size={15} />
+                </span>
+              </button>
+            </div>
           </div>
-        </div>
+        </motion.div>
       )}
     </motion.div>
   );
@@ -4426,6 +4846,802 @@ const MATCH_TYPE_DOC_LABEL = {
   contracts: 'SLA',
 };
 
+const DOC_ICON = {
+  po: FileText,
+  grn: Package,
+  quality: ShieldCheck,
+  service_entry: Clock,
+  contracts: FileSignature,
+};
+
+function DocSummaryLine({ fields, currency }) {
+  if (!fields) return null;
+  const bits = [];
+  if (fields.doc_number) bits.push(fields.doc_number);
+  if (fields.vendor_name) bits.push(fields.vendor_name);
+  if (fields.total != null && fields.total !== '')
+    bits.push(
+      money(Number(fields.total), fields.currency || currency || 'USD'),
+    );
+  if (!bits.length) return null;
+  return (
+    <div
+      style={{
+        fontSize: '11.5px',
+        color: 'var(--gray-500)',
+        marginTop: '3px',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
+      title={bits.join(' · ')}
+    >
+      {bits.join(' · ')}
+    </div>
+  );
+}
+
+function ReadyRing({ done, total }) {
+  const size = 38;
+  const stroke = 4;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const pct = total ? done / total : 0;
+  const complete = total > 0 && done === total;
+  return (
+    <div
+      style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}
+    >
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke='var(--gray-200)'
+          strokeWidth={stroke}
+          fill='none'
+        />
+        <motion.circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={complete ? '#10b981' : 'var(--primary-blue)'}
+          strokeWidth={stroke}
+          strokeLinecap='round'
+          fill='none'
+          strokeDasharray={c}
+          initial={false}
+          animate={{ strokeDashoffset: c - pct * c }}
+          transition={{ duration: 0.45, ease: 'easeOut' }}
+        />
+      </svg>
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <AnimatePresence mode='wait'>
+          {complete ? (
+            <motion.span
+              key='done'
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 18 }}
+              style={{ color: '#10b981', display: 'inline-flex' }}
+            >
+              <CheckCircle2 size={15} />
+            </motion.span>
+          ) : (
+            <motion.span
+              key='count'
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              style={{
+                fontSize: '10.5px',
+                fontWeight: 800,
+                color: 'var(--gray-700)',
+              }}
+            >
+              {done}/{total}
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+function DocChainStrip({ docSteps, invoice }) {
+  return (
+    <div className='ir-ms-chain' style={{ marginTop: 0 }}>
+      <div className='ir-ms-node'>
+        <span
+          className='ir-ms-node__dot'
+          style={{ background: 'var(--primary-blue)', color: 'white' }}
+        >
+          <FileSearch size={14} />
+        </span>
+        <span
+          className='ir-ms-node__label'
+          style={{ color: 'var(--primary-blue)' }}
+        >
+          INV
+        </span>
+      </div>
+      {docSteps.map((docStep) => {
+        const doc = invoice.docStates[docStep.id];
+        const tone = DOC_TONE[docStep.id] || 'slate';
+        const Icon = DOC_ICON[docStep.id] || FileText;
+        const spinning = doc.confirming || doc.fetching;
+        const done = doc.skipped || doc.extractedData;
+        return (
+          <div className='ir-ms-node' key={docStep.id}>
+            <motion.span
+              className={`ir-ms-node__dot ir-ms-tone--${tone}`}
+              layout
+              animate={
+                spinning
+                  ? {
+                      boxShadow: [
+                        '0 0 0 3px var(--primary-white), 0 0 0 3px var(--primary-white)',
+                        '0 0 0 3px var(--primary-white), 0 0 0 7px var(--ms-bg)',
+                        '0 0 0 3px var(--primary-white), 0 0 0 3px var(--primary-white)',
+                      ],
+                    }
+                  : { boxShadow: '0 0 0 3px var(--primary-white)' }
+              }
+              transition={
+                spinning
+                  ? { repeat: Infinity, duration: 1.3, ease: 'easeInOut' }
+                  : { duration: 0.2 }
+              }
+              style={{
+                background: done ? 'var(--ms-fg)' : 'var(--ms-icon-bg)',
+                color: done ? 'white' : 'var(--ms-fg)',
+                opacity: doc.skipped ? 0.45 : 1,
+              }}
+            >
+              {done ? (
+                <Check size={14} />
+              ) : spinning ? (
+                <motion.span
+                  animate={{ rotate: 360 }}
+                  transition={{
+                    repeat: Infinity,
+                    duration: 0.9,
+                    ease: 'linear',
+                  }}
+                  style={{ display: 'inline-flex' }}
+                >
+                  <Loader2 size={14} />
+                </motion.span>
+              ) : (
+                <Icon size={14} />
+              )}
+            </motion.span>
+            <span
+              className='ir-ms-node__label'
+              style={{ color: done ? 'var(--ms-fg)' : 'var(--gray-500)' }}
+            >
+              {MATCH_TYPE_DOC_LABEL[docStep.id] || docStep.label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DocumentCollectionStep({
+  invoice,
+  docSteps,
+  onFileSelect,
+  onFetch,
+  onSkip,
+  onReview,
+  onBack,
+  onContinue,
+  onFieldChange,
+  onLineItemChange,
+  onLineItemAdd,
+  onLineItemRemove,
+  onSourceChange,
+  onRemoveFile,
+  onConfirmFlag,
+}) {
+  const [reviewingDocId, setReviewingDocId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
+  const inputRefs = useRef({});
+  const readyCount = docSteps.filter(
+    (doc) =>
+      invoice.docStates[doc.id]?.skipped ||
+      invoice.docStates[doc.id]?.extractedData,
+  ).length;
+  const allReady = readyCount === docSteps.length;
+
+  if (reviewingDocId) {
+    const docStep = docSteps.find((doc) => doc.id === reviewingDocId);
+    const doc = invoice.docStates[reviewingDocId];
+    return (
+      <DocumentUploadStep
+        key={`${invoice.id}-${reviewingDocId}`}
+        docId={reviewingDocId}
+        title={docStep.title}
+        desc={docStep.desc}
+        icon={docStep.icon}
+        targetRefText={docStep.targetRef(invoice.extractedData)}
+        formats={docStep.formats}
+        doc={doc}
+        invoiceData={invoice.extractedData}
+        nextStepLabel='Review documents'
+        onFileSelect={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onFileSelect(reviewingDocId, file);
+        }}
+        onSourceChange={(source) => onSourceChange(reviewingDocId, source)}
+        onRemoveFile={() => onRemoveFile(reviewingDocId)}
+        onFetch={() => onFetch(reviewingDocId)}
+        onJumpToNextFlag={() => {}}
+        onConfirmFlag={(key) => onConfirmFlag(reviewingDocId, key)}
+        onFieldChange={(key, value) =>
+          onFieldChange(reviewingDocId, key, value)
+        }
+        onLineItemChange={(index, key, value) =>
+          onLineItemChange(reviewingDocId, index, key, value)
+        }
+        onLineItemAdd={() => onLineItemAdd(reviewingDocId)}
+        onLineItemRemove={(index) => onLineItemRemove(reviewingDocId, index)}
+        registerFieldRef={() => () => {}}
+        onBack={() => setReviewingDocId(null)}
+        onContinue={async () => {
+          await onContinue(reviewingDocId);
+          setReviewingDocId(null);
+        }}
+      />
+    );
+  }
+
+  return (
+    <motion.div
+      key={`collection-${invoice.id}`}
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      className='ir-card'
+      style={{ padding: '2rem' }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '16px',
+          flexWrap: 'wrap',
+          marginBottom: '1.25rem',
+        }}
+      >
+        <div>
+          <h2
+            style={{
+              fontSize: '21px',
+              fontWeight: 800,
+              color: 'var(--gray-900)',
+              marginBottom: '5px',
+            }}
+          >
+            Add supporting documents
+          </h2>
+          <p style={{ color: 'var(--gray-500)', fontSize: '13.5px' }}>
+            Drop in whatever you have — each one is checked on its own, so
+            there's no queue to wait behind.
+          </p>
+        </div>
+        <div
+          style={{
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '11px',
+            padding: '7px 15px 7px 9px',
+            borderRadius: '999px',
+            background: allReady ? 'var(--tint-success-bg)' : 'var(--gray-50)',
+            border: `1px solid ${allReady ? 'var(--tint-success-border)' : 'var(--gray-200)'}`,
+          }}
+        >
+          <ReadyRing done={readyCount} total={docSteps.length} />
+          <div style={{ lineHeight: 1.3 }}>
+            <div
+              style={{
+                fontSize: '12px',
+                fontWeight: 800,
+                color: allReady
+                  ? 'var(--tint-success-text)'
+                  : 'var(--gray-800)',
+              }}
+            >
+              {allReady ? 'All documents ready' : 'Processing in parallel'}
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--gray-500)' }}>
+              {readyCount} of {docSteps.length} documents
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <DocChainStrip docSteps={docSteps} invoice={invoice} />
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+          gap: '1rem',
+          marginTop: '1.25rem',
+        }}
+      >
+        {docSteps.map((docStep, i) => {
+          const doc = invoice.docStates[docStep.id];
+          const confidence = getDocConfidencePct(
+            doc.rawDigitization,
+            docStep.id,
+          );
+          const needsReview = confidence == null || confidence < 98;
+          const spinning = doc.confirming || doc.fetching;
+          const tone = DOC_TONE[docStep.id] || 'slate';
+          const Icon = DOC_ICON[docStep.id] || FileText;
+          const isEmpty = !doc.skipped && !doc.extractedData && !spinning;
+          const isDragOver = dragOverId === docStep.id;
+
+          return (
+            <motion.div
+              key={docStep.id}
+              layout
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, delay: i * 0.04 }}
+              whileHover={{ y: -2 }}
+              className={`ir-ms-tone--${tone}`}
+              style={{
+                position: 'relative',
+                overflow: 'hidden',
+                padding: '14px 14px 12px',
+                border: `1px solid ${isDragOver ? 'var(--ms-fg)' : 'var(--gray-200)'}`,
+                borderRadius: '12px',
+                background: isDragOver
+                  ? 'var(--ms-bg)'
+                  : 'var(--primary-white)',
+                display: 'flex',
+                flexDirection: 'column',
+                transition:
+                  'background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease',
+                boxShadow: isDragOver ? 'none' : 'var(--shadow-sm)',
+              }}
+              onDragOver={(e) => {
+                if (!isEmpty) return;
+                e.preventDefault();
+                setDragOverId(docStep.id);
+              }}
+              onDragLeave={() =>
+                setDragOverId((id) => (id === docStep.id ? null : id))
+              }
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverId(null);
+                if (!isEmpty) return;
+                const file = e.dataTransfer.files?.[0];
+                if (file) onFileSelect(docStep.id, file);
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <span
+                  style={{
+                    color: 'var(--ms-fg)',
+                    background: 'var(--ms-icon-bg)',
+                    borderRadius: '10px',
+                    width: '36px',
+                    height: '36px',
+                    flexShrink: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Icon size={17} />
+                </span>
+                {doc.extractedData && (
+                  <span
+                    style={{
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '50%',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: needsReview
+                        ? 'var(--tint-warning-text)'
+                        : '#10b981',
+                      color: 'white',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {needsReview ? (
+                      <AlertTriangle size={11} />
+                    ) : (
+                      <Check size={11} />
+                    )}
+                  </span>
+                )}
+              </div>
+
+              <div
+                style={{
+                  marginTop: '10px',
+                  fontSize: '14px',
+                  fontWeight: 800,
+                  lineHeight: 1.3,
+                  color: 'var(--gray-900)',
+                }}
+              >
+                {docStep.label}
+              </div>
+              <div
+                style={{
+                  marginTop: '3px',
+                  fontSize: '12px',
+                  lineHeight: 1.4,
+                  color: 'var(--gray-500)',
+                  minHeight: '2.6em',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
+                {docStep.desc}
+              </div>
+
+              <AnimatePresence mode='wait'>
+                {spinning ? (
+                  <motion.div
+                    key='spinning'
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    style={{ marginTop: '10px' }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        color: 'var(--ms-fg)',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                      }}
+                    >
+                      <motion.span
+                        animate={{ rotate: 360 }}
+                        transition={{
+                          repeat: Infinity,
+                          duration: 0.9,
+                          ease: 'linear',
+                        }}
+                        style={{ display: 'inline-flex' }}
+                      >
+                        <Loader2 size={12} />
+                      </motion.span>
+                      {doc.fetching ? 'Fetching from ERP…' : 'Extracting…'}
+                    </div>
+                    <div
+                      style={{
+                        height: '3px',
+                        marginTop: '8px',
+                        overflow: 'hidden',
+                        borderRadius: '999px',
+                        background: 'var(--ms-bg)',
+                      }}
+                    >
+                      <motion.div
+                        animate={{ x: ['-100%', '250%'] }}
+                        transition={{
+                          repeat: Infinity,
+                          duration: 1.4,
+                          ease: 'easeInOut',
+                        }}
+                        style={{
+                          width: '45%',
+                          height: '100%',
+                          background: 'var(--ms-fg)',
+                          borderRadius: 'inherit',
+                        }}
+                      />
+                    </div>
+                  </motion.div>
+                ) : doc.skipped ? (
+                  <motion.div
+                    key='skipped'
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    style={{
+                      marginTop: '10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        color: 'var(--gray-500)',
+                      }}
+                    >
+                      Skipped
+                    </span>
+                    <button
+                      type='button'
+                      onClick={() => onSkip(docStep.id, false)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: 0,
+                        border: 'none',
+                        background: 'none',
+                        color: 'var(--primary-blue)',
+                        cursor: 'pointer',
+                        fontWeight: 700,
+                        fontSize: '11.5px',
+                      }}
+                    >
+                      <RotateCcw size={11} /> Undo
+                    </button>
+                  </motion.div>
+                ) : doc.extractedData ? (
+                  <motion.div
+                    key='done'
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    style={{ marginTop: '10px' }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        color: needsReview
+                          ? 'var(--tint-warning-text)'
+                          : 'var(--tint-success-text)',
+                      }}
+                    >
+                      <i
+                        aria-hidden='true'
+                        style={{
+                          width: '6px',
+                          height: '6px',
+                          borderRadius: '50%',
+                          background: needsReview
+                            ? 'var(--tint-warning-text)'
+                            : '#10b981',
+                          flexShrink: 0,
+                        }}
+                      />
+                      {needsReview
+                        ? 'Needs review'
+                        : confidence != null
+                          ? `Matched · ${confidence}%`
+                          : 'Matched'}
+                    </div>
+                    <DocSummaryLine
+                      fields={doc.extractedData}
+                      currency={invoice.extractedData?.currency}
+                    />
+                    {needsReview && (
+                      <button
+                        type='button'
+                        onClick={() => {
+                          onReview(docStep.id);
+                          setReviewingDocId(docStep.id);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          marginTop: '6px',
+                          padding: 0,
+                          border: 'none',
+                          background: 'none',
+                          color: 'var(--primary-blue)',
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                          fontSize: '11.5px',
+                        }}
+                      >
+                        Review <ChevronRight size={12} />
+                      </button>
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key='empty'
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    style={{ marginTop: '10px' }}
+                  >
+                    <input
+                      ref={(node) => {
+                        inputRefs.current[docStep.id] = node;
+                      }}
+                      type='file'
+                      accept={(docStep.formats || ['PDF'])
+                        .map((format) => `.${format.toLowerCase()}`)
+                        .join(',')}
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) onFileSelect(docStep.id, file);
+                        e.target.value = '';
+                      }}
+                    />
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '12px',
+                        color: 'var(--gray-600)',
+                      }}
+                    >
+                      <UploadCloud
+                        size={13}
+                        style={{ color: 'var(--ms-fg)', flexShrink: 0 }}
+                      />
+                      Drag & drop, or{' '}
+                      <button
+                        type='button'
+                        onClick={() => inputRefs.current[docStep.id]?.click()}
+                        style={{
+                          padding: 0,
+                          border: 'none',
+                          background: 'none',
+                          color: 'var(--ms-fg)',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          textDecoration: 'underline',
+                          textUnderlineOffset: '2px',
+                        }}
+                      >
+                        browse
+                      </button>
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginTop: '9px',
+                      }}
+                    >
+                      <button
+                        type='button'
+                        onClick={() => onFetch(docStep.id)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          border: '1px solid var(--gray-200)',
+                          background: 'var(--gray-50)',
+                          borderRadius: '999px',
+                          padding: '3px 9px',
+                          color: 'var(--gray-700)',
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                        }}
+                      >
+                        <Database size={10} /> ERP
+                      </button>
+                      <button
+                        type='button'
+                        onClick={() => onSkip(docStep.id)}
+                        style={{
+                          border: 'none',
+                          background: 'none',
+                          color: 'var(--gray-500)',
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          padding: '3px 4px',
+                        }}
+                      >
+                        Skip
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          marginTop: '1.75rem',
+          paddingTop: '1.25rem',
+          borderTop: '1px solid var(--gray-100)',
+        }}
+      >
+        <button
+          type='button'
+          onClick={onBack}
+          style={{
+            width: '130px',
+            background: 'var(--primary-white)',
+            color: 'var(--gray-700)',
+            padding: '14px',
+            borderRadius: '10px',
+            fontWeight: 700,
+            fontSize: '15px',
+            border: '2px solid var(--gray-300)',
+            cursor: 'pointer',
+          }}
+        >
+          ← Back
+        </button>
+        <div
+          style={{
+            flex: 1,
+            textAlign: 'right',
+            fontSize: '12.5px',
+            color: 'var(--gray-500)',
+            fontWeight: 600,
+            paddingRight: '4px',
+          }}
+        >
+          {!allReady &&
+            `Waiting on ${docSteps.length - readyCount} more document${docSteps.length - readyCount === 1 ? '' : 's'}`}
+        </div>
+        <button
+          type='button'
+          onClick={onContinue}
+          disabled={!allReady}
+          style={{
+            width: '240px',
+            background: allReady ? 'var(--primary-blue)' : 'var(--gray-400)',
+            color: 'white',
+            padding: '14px',
+            borderRadius: '10px',
+            fontWeight: 700,
+            fontSize: '15px',
+            border: 'none',
+            cursor: allReady ? 'pointer' : 'not-allowed',
+          }}
+        >
+          Continue to review →
+        </button>
+      </div>
+    </motion.div>
+  );
+}
 function MatchTypeSelectStep({
   invoice,
   index,
@@ -4720,7 +5936,7 @@ export default function NewReconciliation() {
     }
 
     try {
-      const res = await digitizeDocument(file, digitizeType, { debug: true });
+      const res = await digitizeDocument(file, digitizeType, { debug: true, language: ocrLanguage });
       const fields = DOC_ID_TO_MAPPER[docId](res);
       dispatch({
         type: 'INV_DOC_UPLOAD_SUCCESS',
@@ -4729,7 +5945,7 @@ export default function NewReconciliation() {
         documentId: null,
         fields,
         confidence: null,
-        lineItems: [],
+        lineItems: toFormRows(DOC_ID_TO_LINE_MAPPER[docId]?.(res) ?? []),
         fieldReview: buildFieldReview(fields, `${invId}-${docId}`),
         pageCount: null,
         uploadedAt: new Date().toISOString(),
@@ -4751,8 +5967,7 @@ export default function NewReconciliation() {
   const confirmInvDocAndContinue = async (invId, docId) => {
     const inv = invoices.find((i) => i.id === invId);
     const doc = inv.docStates[docId];
-    if (!doc.documentId)
-      return dispatch({ type: 'INV_STEP_ADVANCED', id: invId });
+    if (!doc.documentId) return;
     dispatch({ type: 'INV_DOC_CONFIRM_STARTED', id: invId, docId });
     try {
       await confirmDocument(doc.documentId, { fields: doc.extractedData });
@@ -4769,6 +5984,101 @@ export default function NewReconciliation() {
       });
     }
   };
+
+  const handleCollectionContinue = (docId) =>
+    docId
+      ? confirmInvDocAndContinue(currentPipelineInvoice.id, docId)
+      : dispatch({
+          type: 'INV_STEP_ADVANCED',
+          id: currentPipelineInvoice.id,
+        });
+
+  const handleCollectionFetch = (docId) => {
+    updateInvDoc(currentPipelineInvoice.id, docId, {
+      source: 'erp',
+      fetching: true,
+    });
+    setTimeout(() => {
+      updateInvDoc(currentPipelineInvoice.id, docId, {
+        fetching: false,
+        fetched: true,
+      });
+      dispatch({
+        type: 'INV_DOC_SKIPPED',
+        id: currentPipelineInvoice.id,
+        docId,
+      });
+    }, 1500);
+  };
+
+  const handleCollectionSkip = (docId, skipped = true) => {
+    if (skipped) {
+      dispatch({
+        type: 'INV_DOC_SKIPPED',
+        id: currentPipelineInvoice.id,
+        docId,
+      });
+    } else {
+      updateInvDoc(currentPipelineInvoice.id, docId, {
+        skipped: false,
+        source: 'manual',
+        fetched: false,
+      });
+    }
+  };
+
+  const handleCollectionFileSelect = (docId, file) =>
+    handleInvDocFileSelected(currentPipelineInvoice.id, docId, file);
+
+  const handleCollectionFieldChange = (docId, key, value) =>
+    updateInvDoc(currentPipelineInvoice.id, docId, {
+      extractedData: {
+        ...currentPipelineInvoice.docStates[docId].extractedData,
+        [key]: value,
+      },
+    });
+
+  const handleCollectionLineItemChange = (docId, index, key, value) =>
+    dispatch({
+      type: 'INV_DOC_LINE_ITEM_CHANGED',
+      id: currentPipelineInvoice.id,
+      docId,
+      index,
+      key,
+      value,
+    });
+  const handleCollectionLineItemAdd = (docId) =>
+    dispatch({
+      type: 'INV_DOC_LINE_ITEM_ADDED',
+      id: currentPipelineInvoice.id,
+      docId,
+    });
+  const handleCollectionLineItemRemove = (docId, index) =>
+    dispatch({
+      type: 'INV_DOC_LINE_ITEM_REMOVED',
+      id: currentPipelineInvoice.id,
+      docId,
+      index,
+    });
+
+  const handleCollectionSourceChange = (docId, source) =>
+    updateInvDoc(currentPipelineInvoice.id, docId, { source });
+
+  const handleCollectionRemoveFile = (docId) =>
+    updateInvDoc(currentPipelineInvoice.id, docId, {
+      file: null,
+      documentId: null,
+      extractedData: null,
+      extractionConfidence: null,
+      lineItems: [],
+      fieldReview: null,
+      resolvedFlags: [],
+      pageCount: null,
+      uploadedAt: null,
+      skipped: false,
+      fetched: false,
+      source: 'manual',
+    });
 
   const submitInvoiceReconciliation = async (invId) => {
     const inv = invoices.find((i) => i.id === invId);
@@ -4837,88 +6147,6 @@ export default function NewReconciliation() {
             : 'Could not run this reconciliation. Please try again.',
       });
     }
-  };
-
-  const renderInvDocStep = (
-    invId,
-    docId,
-    title,
-    desc,
-    targetRefText,
-    formats = ['PDF'],
-  ) => {
-    const inv = invoices.find((i) => i.id === invId);
-    const dt = DOC_TYPES.find((d) => d.id === docId);
-    return (
-      <DocumentUploadStep
-        key={`${invId}-${docId}`}
-        docId={docId}
-        title={title}
-        desc={desc}
-        icon={dt?.icon}
-        targetRefText={targetRefText}
-        formats={formats}
-        doc={inv.docStates[docId]}
-        invoiceData={inv.extractedData}
-        onFieldChange={(key, value) =>
-          updateInvDoc(invId, docId, {
-            extractedData: {
-              ...inv.docStates[docId].extractedData,
-              [key]: value,
-            },
-          })
-        }
-        nextStepLabel={
-          pipelineStepIndex + 1 <= pipelineDocSteps.length
-            ? (pipelineDocSteps[pipelineStepIndex]?.label ?? 'Review')
-            : 'Review'
-        }
-        onFileSelect={(e) => {
-          const f = e.target.files?.[0];
-          if (f) {
-            if (!f.name.toLowerCase().endsWith('.pdf'))
-              return dispatch({
-                type: 'ERROR_SET',
-                message: 'Only PDF files are supported.',
-              });
-            handleInvDocFileSelected(invId, docId, f);
-          }
-        }}
-        onSourceChange={(source) => updateInvDoc(invId, docId, { source })}
-        onRemoveFile={() =>
-          updateInvDoc(invId, docId, {
-            file: null,
-            documentId: null,
-            extractedData: null,
-            extractionConfidence: null,
-            lineItems: [],
-            fieldReview: null,
-            resolvedFlags: [],
-            pageCount: null,
-            uploadedAt: null,
-          })
-        }
-        onFetch={() => {
-          updateInvDoc(invId, docId, { fetching: true });
-          setTimeout(
-            () =>
-              updateInvDoc(invId, docId, { fetching: false, fetched: true }),
-            1500,
-          );
-        }}
-        onJumpToNextFlag={() => {}}
-        onConfirmFlag={(key) =>
-          dispatch({ type: 'INV_DOC_FLAG_CONFIRMED', id: invId, docId, key })
-        }
-        registerFieldRef={() => () => {}}
-        onBack={() => dispatch({ type: 'INV_STEP_BACK', id: invId })}
-        onContinue={() =>
-          inv.docStates[docId].source === 'manual' && inv.docStates[docId].file
-            ? confirmInvDocAndContinue(invId, docId)
-            : dispatch({ type: 'INV_STEP_ADVANCED', id: invId })
-        }
-      />
-    );
   };
 
   return (
@@ -5033,52 +6261,70 @@ export default function NewReconciliation() {
             {phase === 'pipeline' &&
               currentPipelineInvoice &&
               pipelineStepIndex === 0 && (
-                <MatchTypeSelectStep
-                  invoice={currentPipelineInvoice}
-                  index={pipelineIndex}
-                  total={nonDuplicates.length}
-                  onSelect={(matchType, matchParams) =>
-                    setMatchType(
-                      currentPipelineInvoice.id,
-                      matchType,
-                      matchParams,
-                    )
+                <MatchingStrategyStep
+                  docTypes={DOC_TYPES}
+                  matchParams={currentPipelineInvoice.matchParams}
+                  extractedData={currentPipelineInvoice.extractedData}
+                  lineItems={currentPipelineInvoice.lineItems}
+                  nextStepLabel={pipelineDocSteps[0]?.label ?? 'Review'}
+                  onToggle={(id, checked) =>
+                    dispatch({
+                      type: 'INV_MATCH_PARAM_TOGGLED',
+                      id: currentPipelineInvoice.id,
+                      key: id,
+                      checked,
+                    })
                   }
-                  onContinue={(matchType) => {
-                    if (!currentPipelineInvoice.matchType)
-                      setMatchType(
-                        currentPipelineInvoice.id,
-                        matchType,
-                        matchParamsForType(matchType),
-                      );
+                  onSetParams={(matchParams) =>
+                    setMatchType(currentPipelineInvoice.id, null, matchParams)
+                  }
+                  onBack={() => dispatch({ type: 'PHASE_SET', phase: 'hitl' })}
+                  onContinue={() =>
                     dispatch({
                       type: 'INV_STEP_ADVANCED',
                       id: currentPipelineInvoice.id,
-                    });
-                  }}
-                  onBack={() => dispatch({ type: 'PHASE_SET', phase: 'hitl' })}
+                    })
+                  }
                 />
               )}
 
             {phase === 'pipeline' &&
               currentPipelineInvoice &&
-              pipelineStepIndex >= 1 &&
-              pipelineStepIndex <= pipelineDocSteps.length &&
-              (() => {
-                const dt = pipelineDocSteps[pipelineStepIndex - 1];
-                return renderInvDocStep(
-                  currentPipelineInvoice.id,
-                  dt.id,
-                  dt.title,
-                  dt.desc,
-                  dt.targetRef(currentPipelineInvoice.extractedData),
-                  dt.formats,
-                );
-              })()}
+              pipelineStepIndex === 1 && (
+                <DocumentCollectionStep
+                  invoice={currentPipelineInvoice}
+                  docSteps={pipelineDocSteps}
+                  onFileSelect={handleCollectionFileSelect}
+                  onFetch={handleCollectionFetch}
+                  onSkip={handleCollectionSkip}
+                  onReview={() => {}}
+                  onBack={() =>
+                    dispatch({
+                      type: 'INV_STEP_BACK',
+                      id: currentPipelineInvoice.id,
+                    })
+                  }
+                  onContinue={handleCollectionContinue}
+                  onFieldChange={handleCollectionFieldChange}
+                  onLineItemChange={handleCollectionLineItemChange}
+                  onLineItemAdd={handleCollectionLineItemAdd}
+                  onLineItemRemove={handleCollectionLineItemRemove}
+                  onSourceChange={handleCollectionSourceChange}
+                  onRemoveFile={handleCollectionRemoveFile}
+                  onConfirmFlag={(docId, key) =>
+                    dispatch({
+                      type: 'INV_DOC_FLAG_CONFIRMED',
+                      id: currentPipelineInvoice.id,
+                      docId,
+                      key,
+                    })
+                  }
+                />
+              )}
 
             {phase === 'pipeline' &&
               currentPipelineInvoice &&
-              pipelineStepIndex > pipelineDocSteps.length && (
+              pipelineStepIndex > 1 && (
                 <motion.div
                   key={`review-${currentPipelineInvoice.id}`}
                   initial={{ opacity: 0, x: 20 }}

@@ -320,44 +320,6 @@ export default function MatchingStrategyStep({
 
       <div className="ir-ms__body">
         <div className="ir-ms__main">
-          {/* Recommendation */}
-          <div className="ir-ms-rec">
-            <span className="ir-ms-rec__spark"><SparkIcon /></span>
-            <div className="ir-ms-rec__copy">
-              <div className="ir-ms-rec__eyebrow">
-                Cortex suggestion
-                <span className="ir-ms-rec__conf">{rec.confidence}% confidence</span>
-              </div>
-              <div className="ir-ms-rec__title">
-                A {recName} match fits this invoice best
-                {!rec.preset && (
-                  <span className="ir-ms-rec__docs">
-                    {rec.docs.map((id) => DOC_META[id].short).join(' + ')}
-                  </span>
-                )}
-              </div>
-              <p className="ir-ms-rec__why">{rec.why}</p>
-              <div className="ir-ms-rec__chips">
-                {rec.chips.map((c) => (
-                  <span key={c.text} className={`ir-ms-chip ir-ms-chip--${c.tone}`}>
-                    {c.tone === 'ok' && <CheckIcon />}
-                    {c.tone === 'warn' && <AlertIcon size={12} />}
-                    {c.text}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div className="ir-ms-rec__action">
-              {recApplied ? (
-                <span className="ir-ms-applied"><CheckIcon /> Applied</span>
-              ) : (
-                <button type="button" className="ir-ms-btn-apply" onClick={() => onSetParams(toParams(rec.docs))}>
-                  {rec.preset ? `Use ${rec.preset.label.toLowerCase()}` : 'Use this'}
-                </button>
-              )}
-            </div>
-          </div>
-
           {/* Presets */}
           <section>
             <div className="ir-ms-label">

@@ -1,0 +1,211 @@
+/* Language Selector Component Styles */
+.language-selector-container {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Input Wrapper */
+.language-selector-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.language-selector-input {
+  width: 100%;
+  padding: 10px 40px 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #1e293b;
+  background: white;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.language-selector-input:focus {
+  border-color: #0369a1;
+  box-shadow: 0 0 0 3px rgba(3, 105, 161, 0.1);
+}
+
+.language-selector-input:hover:not(:disabled) {
+  border-color: #0369a1;
+}
+
+.language-selector-input:disabled {
+  background-color: #f9fafb;
+  opacity: 0.7;
+  cursor: not-allowed;
+  color: #9ca3af;
+}
+
+.language-selector-arrow {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #6b7280;
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+.language-selector-container:focus-within .language-selector-arrow {
+  color: #0369a1;
+}
+
+/* Dropdown */
+.language-selector-dropdown {
+  /* Position is set inline via style prop for fixed positioning */
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10000 !important;
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-top: 0;
+}
+
+.language-selector-list {
+  list-style: none;
+  margin: 4px;
+  padding: 0;
+}
+
+.language-selector-option {
+  padding: 10px 14px;
+  font-size: 14px;
+  color: #1e293b;
+  cursor: pointer;
+  border-radius: 6px;
+  margin: 2px 0;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.language-selector-option:hover,
+.language-selector-option.highlighted {
+  background-color: #f0f9ff;
+  color: #0369a1;
+}
+
+.language-selector-option.selected {
+  background-color: #0369a1;
+  color: white;
+  font-weight: 500;
+}
+
+.language-selector-option.selected:hover,
+.language-selector-option.selected.highlighted {
+  background-color: #0284c7;
+  color: white;
+}
+
+.language-selector-option.create-new {
+  border-top: 1px solid #e5e7eb;
+  margin-top: 4px;
+  padding-top: 12px;
+  font-weight: 500;
+  color: #0369a1;
+}
+
+.language-selector-option.create-new:hover,
+.language-selector-option.create-new.highlighted {
+  background-color: #e0f2fe;
+  color: #0369a1;
+}
+
+.create-icon {
+  font-size: 16px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.language-selector-option.no-results {
+  color: #64748b;
+  font-style: italic;
+  cursor: default;
+  padding: 12px 14px;
+}
+
+.language-selector-option.no-results:hover {
+  background-color: transparent;
+  color: #64748b;
+}
+
+/* Ensure proper width in form contexts */
+.input-wrapper .language-selector-container,
+.form-group .language-selector-container {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+/* Embedded layout style adjustments to match standard form elements */
+.embedded-language-selector .language-selector-input {
+  padding: 8px 36px 8px 12px;
+  font-size: 13px;
+  height: 36px;
+  border-radius: 6px;
+}
+
+/* Ensure parent containers don't clip the menu */
+.form-section-card,
+.form-group,
+.input-wrapper {
+  overflow: visible !important;
+}
+
+/* Scrollbar styling */
+.language-selector-dropdown::-webkit-scrollbar {
+  width: 8px;
+}
+
+.language-selector-dropdown::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.language-selector-dropdown::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.language-selector-dropdown::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .language-selector-input {
+    font-size: 13px;
+    padding: 8px 36px 8px 10px;
+  }
+  
+  .language-selector-option {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 480px) {
+  .language-selector-container {
+    min-width: 100%;
+    width: 100%;
+  }
+  
+  .language-selector-input {
+    font-size: 12px;
+    padding: 8px 32px 8px 10px;
+  }
+  
+  .language-selector-option {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+}
